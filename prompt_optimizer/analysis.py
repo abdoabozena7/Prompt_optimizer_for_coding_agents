@@ -4,14 +4,11 @@ import json
 import re
 from typing import Any
 
-from ollama import Client, ResponseError
-
 from prompt_optimizer.models import (
     AnalysisResult,
     ClarificationQuestion,
     RepoContextSnippet,
 )
-
 
 INITIAL_ANALYSIS_SYSTEM_PROMPT = """You analyze coding diffs and prompts.
 
@@ -91,7 +88,11 @@ def build_analysis_payload(
             "Diff under analysis:",
             diff_text.strip() or "(empty)",
             "Relevant repository context:",
-            "\n\n".join(context_blocks) if context_blocks else "(no repo context found)",
+            (
+                "\n\n".join(context_blocks)
+                if context_blocks
+                else "(no repo context found)"
+            ),
         ]
     )
 
@@ -104,7 +105,9 @@ def build_final_prompt_payload(
     clarification_answers: list[dict[str, str]],
 ) -> str:
     context_blocks = []
-    missing_items = [f"- {item}" for item in analysis_result.missing_info] or ["- (none)"]
+    missing_items = [f"- {item}" for item in analysis_result.missing_info] or [
+        "- (none)"
+    ]
     for snippet in repo_context:
         context_blocks.append(
             "\n".join(
@@ -147,7 +150,11 @@ def build_final_prompt_payload(
             "Clarification answers:",
             "\n\n".join(answer_blocks) if answer_blocks else "(none)",
             "Relevant repository context:",
-            "\n\n".join(context_blocks) if context_blocks else "(no repo context found)",
+            (
+                "\n\n".join(context_blocks)
+                if context_blocks
+                else "(no repo context found)"
+            ),
         ]
     )
 
@@ -187,7 +194,11 @@ def parse_analysis_response(raw_text: str) -> AnalysisResult:
                 question = str(item.get("question", "")).strip()
                 options_raw = item.get("options", [])
                 if isinstance(options_raw, list):
-                    options = [str(option).strip() for option in options_raw if str(option).strip()]
+                    options = [
+                        str(option).strip()
+                        for option in options_raw
+                        if str(option).strip()
+                    ]
                 else:
                     options = []
                 if question:
@@ -228,37 +239,22 @@ def analyze_for_clarification(
     diff_text: str,
     repo_context: list[RepoContextSnippet],
     ui_language: str,
-    model: str = "gpt-oss:120b-cloud",
-    client: Client | None = None,
+    model: str = "",
+    provider: Any | None = None,
 ) -> AnalysisResult:
-    client = client or Client()
-    payload = build_analysis_payload(
+    if provider is None:
+        from prompt_optimizer.providers import DEFAULT_OLLAMA_MODEL, OllamaProvider
+
+        provider = OllamaProvider()
+        model = model or DEFAULT_OLLAMA_MODEL
+
+    return provider.analyze_for_clarification(
         prompt_text=prompt_text,
         diff_text=diff_text,
         repo_context=repo_context,
         ui_language=ui_language,
+        model=model,
     )
-
-    try:
-        response = client.chat(
-            model=model,
-            messages=[
-                {"role": "system", "content": INITIAL_ANALYSIS_SYSTEM_PROMPT},
-                {"role": "user", "content": payload},
-            ],
-            options={"temperature": 0.2},
-            format="json",
-        )
-    except ResponseError as exc:
-        raise RuntimeError(f"Ollama request failed: {exc.error}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"Could not reach Ollama: {exc}") from exc
-
-    message = response.get("message", {})
-    content = str(message.get("content", "")).strip()
-    if not content:
-        raise RuntimeError("Ollama returned an empty response.")
-    return parse_analysis_response(content)
 
 
 def generate_final_prompt(
@@ -267,35 +263,20 @@ def generate_final_prompt(
     repo_context: list[RepoContextSnippet],
     analysis_result: AnalysisResult,
     clarification_answers: list[dict[str, str]],
-    model: str = "gpt-oss:120b-cloud",
-    client: Client | None = None,
+    model: str = "",
+    provider: Any | None = None,
 ) -> str:
-    client = client or Client()
-    payload = build_final_prompt_payload(
+    if provider is None:
+        from prompt_optimizer.providers import DEFAULT_OLLAMA_MODEL, OllamaProvider
+
+        provider = OllamaProvider()
+        model = model or DEFAULT_OLLAMA_MODEL
+
+    return provider.generate_final_prompt(
         prompt_text=prompt_text,
         diff_text=diff_text,
         repo_context=repo_context,
         analysis_result=analysis_result,
         clarification_answers=clarification_answers,
+        model=model,
     )
-
-    try:
-        response = client.chat(
-            model=model,
-            messages=[
-                {"role": "system", "content": FINAL_PROMPT_SYSTEM_PROMPT},
-                {"role": "user", "content": payload},
-            ],
-            options={"temperature": 0.2},
-            format="json",
-        )
-    except ResponseError as exc:
-        raise RuntimeError(f"Ollama request failed: {exc.error}") from exc
-    except Exception as exc:
-        raise RuntimeError(f"Could not reach Ollama: {exc}") from exc
-
-    message = response.get("message", {})
-    content = str(message.get("content", "")).strip()
-    if not content:
-        raise RuntimeError("Ollama returned an empty response.")
-    return parse_final_prompt_response(content)

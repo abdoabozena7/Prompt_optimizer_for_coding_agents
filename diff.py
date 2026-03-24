@@ -1,908 +1,762 @@
 from __future__ import annotations
 
-from datetime import datetime
+import hashlib
 import os
-from pathlib import Path
 import subprocess
+from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
 
-from prompt_optimizer.analysis import (
-    analyze_for_clarification,
-    generate_final_prompt,
-)
+from prompt_optimizer.analysis import analyze_for_clarification, generate_final_prompt
 from prompt_optimizer.context import build_repo_context
 from prompt_optimizer.diff_utils import (
     combine_diff_sources,
     extract_changed_paths,
     looks_like_binary_diff,
 )
-from prompt_optimizer.models import AnalysisResult, ClarificationQuestion
 from prompt_optimizer.preferences import load_preferences, save_preferences
+from prompt_optimizer.providers import (
+    DEFAULT_OLLAMA_MODEL,
+    OllamaProvider,
+    select_preferred_model,
+)
 from prompt_optimizer.repo_ops import (
     ensure_local_project_path,
     get_remote_commit_diff,
     get_remote_last_commits,
     is_valid_repo_url,
-    save_diff_to_app_storage,
     safe_filename,
+    save_diff_to_app_storage,
 )
 
+st.set_page_config(page_title="Prompt Optimizer", page_icon="🧭", layout="wide")
 
-st.set_page_config(
-    page_title="Diff Intent Analyzer",
-    page_icon="🎯",
-    layout="wide",
-)
-
-DEFAULT_MODEL = "gpt-oss:120b-cloud"
-
-LANGUAGE_OPTIONS = {
-    "en": "English",
-    "ar": "العربية",
-}
-
-TEXT = {
+COPY = {
     "en": {
-        "title": "Diff Intent Analyzer",
-        "subtitle": "Analyze first, answer clarifications second, then generate the final prompt in English.",
-        "settings": "Settings",
-        "language": "Language",
-        "prompt_section": "1. Prompt",
-        "prompt_placeholder": "Describe what you asked the coding agent to do.",
-        "project_section": "2. Local Project Path",
-        "project_help": "Used to read the real project files for context.",
-        "project_placeholder": r"D:\projects\my-project",
-        "diff_section": "3. Diff",
-        "diff_placeholder": "Paste a unified diff here.",
-        "upload_label": "Upload diff files",
-        "upload_help": "Optional. You can upload up to 10 diff files.",
-        "remote_section": "Import from remote commits",
-        "remote_placeholder": "https://github.com/owner/repo",
-        "remote_help": "Optional. Used only to fetch recent commit diffs.",
-        "fetch_commits": "Fetch recent commits",
-        "refresh_commits": "Refresh",
-        "last_refreshed": "Last refreshed: {time}",
-        "ready": "Ready",
-        "prompt_ready": "Prompt",
-        "project_ready": "Project path",
-        "changed_files": "Changed files",
-        "missing": "Missing",
-        "ready_value": "Ready",
-        "run": "Run",
-        "analyze": "Analyze first",
-        "generate_final": "Generate final English prompt",
-        "flow_note": "Flow: analyze -> answer questions -> generate final prompt.",
-        "results": "Results",
-        "agent_trying": "Agent is trying to...",
-        "user_trying": "You are trying to say...",
-        "missing_points": "Missing / unclear points",
-        "no_missing": "No major missing information detected.",
-        "questions_title": "Clarification questions",
-        "questions_note": "Answer these first. The final prompt will be generated only after this step.",
-        "option_label": "Choose one option",
-        "custom_label": "Optional clarification",
-        "custom_placeholder": "Add your own note if none of the three choices is exact.",
-        "final_prompt_title": "Final prompt (English)",
-        "no_output": "No output.",
-        "no_questions": "No clarification questions were needed. You can generate the final English prompt now.",
-        "remote_status_prefix": "Loaded recent commits from",
-        "save_diff": "Save {short_hash}.diff locally",
-        "put_in_diff": "Put in diff box",
-        "saved_diff": "Saved inside Prompt Optimizer: {path}",
-        "open_saved_diff": "Open saved diff",
-        "skipped_files": "Skipped binary-looking files: {files}",
-        "need_input": "Provide at least a prompt/plan or a diff before running analysis.",
-        "need_remote_url": "Enter a remote Git URL first.",
-        "invalid_remote_url": "Remote Git URL is not a supported GitHub or GitLab URL.",
-        "fetching_commits": "Fetching recent commits...",
-        "analyzing": "Analyzing diff and preparing clarification questions...",
-        "building_prompt": "Generating the final English prompt...",
-        "use_local_note": "The local project path is read-only for code context. Remote Git is optional and only used to import commit diffs.",
-        "step_two": "Step 2",
-        "step_two_desc": "These clarification cards are animated in and each one gives you 3 choices plus a custom note field.",
-        "final_note": "The explanations and questions follow the selected UI language. The final prompt stays in English.",
+        "lang": "Language",
+        "workspace": "Project Workspace",
+        "intake": "Intake",
+        "analysis": "Analysis",
+        "clarifications": "Clarifications",
+        "final": "Final Prompt",
+        "intent": "Implementation Intent",
+        "intent_note": "Define the architectural scope of your prompt",
+        "prompt_ph": "Describe your implementation intent...",
+        "diff": "Unified Diff Input",
+        "diff_ph": "Paste unified diff content here.",
+        "project": "Project Context",
+        "project_ph": r"D:\projects\my-project",
+        "remote": "Remote Source",
+        "remote_ph": "https://github.com/owner/repo",
+        "fetch": "Fetch Recent Commits",
+        "refresh": "Refresh",
+        "activity": "Recent Activity",
+        "engine": "Engine Config",
+        "analyze": "Analyze",
+        "generate": "Generate Final Prompt",
+        "restart": "Start New Optimization",
+        "results": "Analysis Results",
+        "results_note": "Review the parsed intent and clarify what is still ambiguous.",
+        "agent": "Agent is trying to...",
+        "user": "You are trying to say...",
+        "missing": "Unclear Points",
+        "clarify": "Clarification Required",
+        "custom": "Custom definition (optional)...",
+        "final_title": "Final Output",
+        "final_note": "Refined, structured, and ready for deployment.",
+        "copy_ready": "Ready for copy",
+        "export": "Export as .md",
+        "summary": "Optimization Summary",
+        "ollama_off": "Ollama Unavailable",
+        "ollama_body": "The local LLM engine could not be detected. Prompt Optimizer requires a running Ollama instance to analyze and optimize your inputs locally.",
+        "reconnect": "Reconnect Instance",
+        "open_logs": "Open Logs",
+        "step1": "Ensure the Ollama desktop application is active.",
+        "step2": "Verify port 11434 is open and not blocked.",
+        "need_input": "Provide at least a prompt or a diff before running analysis.",
+        "need_remote": "Enter a remote Git URL first.",
+        "invalid_remote": "Remote Git URL is not a supported GitHub or GitLab URL.",
+        "fetching": "Fetching recent commits...",
+        "analyzing": "Analyzing diff and preparing clarifications...",
+        "building": "Generating the final English prompt...",
+        "save": "Save Locally",
+        "insert": "Insert Diff",
+        "saved": "Saved inside Prompt Optimizer: {path}",
+        "open_saved": "Open saved diff",
+        "fallback": "Preferred model '{requested}' is unavailable. Using '{resolved}'.",
+        "skipped": "Skipped binary-looking files: {files}",
+        "no_questions": "No clarification questions were required. The final prompt was generated automatically.",
+        "status_ready": "Ready",
+        "status_off": "Disconnected",
+        "use_local": "The local project path is read-only for code context. Remote Git is optional and only used to import commit diffs.",
     },
     "ar": {
-        "title": "محلل نية الـ Diff",
-        "subtitle": "حلل أولًا، جاوب على الأسئلة التوضيحية ثانيًا، وبعدها فقط يتم توليد الـ prompt النهائي بالإنجليزية.",
-        "settings": "الإعدادات",
-        "language": "اللغة",
-        "prompt_section": "1. البرومبت",
-        "prompt_placeholder": "اكتب ماذا طلبت من الـ agent أن ينفذه.",
-        "project_section": "2. مسار المشروع المحلي",
-        "project_help": "يُستخدم لقراءة ملفات المشروع الحقيقية وبناء السياق.",
-        "project_placeholder": r"D:\projects\my-project",
-        "diff_section": "3. الـ Diff",
-        "diff_placeholder": "الصق الـ unified diff هنا.",
-        "upload_label": "ارفع ملفات diff",
-        "upload_help": "اختياري. يمكنك رفع حتى 10 ملفات diff.",
-        "remote_section": "استيراد من commits الريبو",
-        "remote_placeholder": "https://github.com/owner/repo",
-        "remote_help": "اختياري. يُستخدم فقط لجلب commit diffs.",
-        "fetch_commits": "هات آخر commits",
-        "refresh_commits": "تحديث",
-        "last_refreshed": "آخر تحديث: {time}",
-        "ready": "الجاهزية",
-        "prompt_ready": "البرومبت",
-        "project_ready": "مسار المشروع",
-        "changed_files": "الملفات المتغيرة",
-        "missing": "ناقص",
-        "ready_value": "جاهز",
-        "run": "التنفيذ",
-        "analyze": "حلل أولًا",
-        "generate_final": "ولّد الـ prompt النهائي بالإنجليزية",
-        "flow_note": "الترتيب: تحليل -> إجابة الأسئلة -> توليد الـ prompt النهائي.",
-        "results": "النتائج",
-        "agent_trying": "الـ Agent يحاول أن...",
-        "user_trying": "أنت تحاول أن تقول...",
-        "missing_points": "النقاط الناقصة / غير الواضحة",
-        "no_missing": "لا توجد فجوات كبيرة واضحة.",
-        "questions_title": "أسئلة توضيحية",
-        "questions_note": "جاوب على هذه الأسئلة أولًا. لن يتم توليد الـ prompt النهائي إلا بعد هذه المرحلة.",
-        "option_label": "اختر إجابة واحدة",
-        "custom_label": "توضيح إضافي اختياري",
-        "custom_placeholder": "أضف ملاحظتك لو لم يكن أي من الاختيارات الثلاثة مناسبًا تمامًا.",
-        "final_prompt_title": "الـ Prompt النهائي (بالإنجليزية)",
-        "no_output": "لا يوجد ناتج.",
-        "no_questions": "لا توجد أسئلة توضيحية ضرورية. يمكنك الآن توليد الـ prompt النهائي بالإنجليزية.",
-        "remote_status_prefix": "تم تحميل آخر commits من",
-        "save_diff": "احفظ {short_hash}.diff داخل المشروع",
-        "put_in_diff": "حطّه في خانة الـ diff",
-        "saved_diff": "تم حفظ الـ diff في: {path}",
-        "open_saved_diff": "افتح ملف الـ diff المحفوظ",
-        "save_needs_project": "أدخل مسار المشروع المحلي أولًا حتى يتم حفظ الـ diff داخله.",
-        "skipped_files": "تم تجاهل الملفات التي تبدو binary: {files}",
-        "need_input": "أدخل على الأقل برومبت/بلان أو diff قبل بدء التحليل.",
-        "need_remote_url": "أدخل رابط الريبو أولًا.",
-        "invalid_remote_url": "رابط الريبو غير مدعوم. استخدم GitHub أو GitLab فقط.",
-        "fetching_commits": "جاري جلب آخر commits...",
-        "analyzing": "جاري تحليل الـ diff وتحضير الأسئلة التوضيحية...",
-        "building_prompt": "جاري توليد الـ prompt النهائي بالإنجليزية...",
-        "use_local_note": "المسار المحلي يُستخدم لقراءة الكود. رابط الريبو اختياري ويُستخدم فقط لاستيراد commit diffs.",
-        "step_two": "الخطوة الثانية",
-        "step_two_desc": "ستظهر كروت الأسئلة بحركة خفيفة، وكل سؤال فيه 3 اختيارات بالإضافة إلى خانة توضيح إضافية.",
-        "final_note": "الشرح والأسئلة يتبعان اللغة المختارة، لكن الـ prompt النهائي يظل بالإنجليزية دائمًا.",
+        "lang": "اللغة",
+        "workspace": "مساحة المشروع",
+        "intake": "الإدخال",
+        "analysis": "التحليل",
+        "clarifications": "التوضيحات",
+        "final": "البرومبت النهائي",
+        "intent": "نية التنفيذ",
+        "intent_note": "حدد النطاق المعماري للطلب",
+        "prompt_ph": "اكتب intent أو الطلب الأساسي هنا...",
+        "diff": "إدخال الـ Diff",
+        "diff_ph": "الصق unified diff هنا.",
+        "project": "سياق المشروع",
+        "project_ph": r"D:\projects\my-project",
+        "remote": "المصدر البعيد",
+        "remote_ph": "https://github.com/owner/repo",
+        "fetch": "هات آخر commits",
+        "refresh": "تحديث",
+        "activity": "آخر النشاط",
+        "engine": "إعدادات المحرك",
+        "analyze": "حلل",
+        "generate": "ولّد البرومبت النهائي",
+        "restart": "ابدأ تحسينًا جديدًا",
+        "results": "نتائج التحليل",
+        "results_note": "راجع فهم النظام وحدد ما بقي غامضًا.",
+        "agent": "الوكيل يحاول أن...",
+        "user": "أنت تحاول أن تقول...",
+        "missing": "النقاط غير الواضحة",
+        "clarify": "توضيحات مطلوبة",
+        "custom": "توضيح إضافي اختياري...",
+        "final_title": "الناتج النهائي",
+        "final_note": "منظم وجاهز للاستخدام.",
+        "copy_ready": "جاهز للنسخ",
+        "export": "تصدير .md",
+        "summary": "ملخص التحسين",
+        "ollama_off": "Ollama غير متاح",
+        "ollama_body": "تعذر الوصول إلى المحرك المحلي. Prompt Optimizer يحتاج Ollama شغالًا لتحليل المدخلات محليًا.",
+        "reconnect": "أعد الاتصال",
+        "open_logs": "افتح السجلات",
+        "step1": "تأكد أن Ollama شغال على الجهاز.",
+        "step2": "تأكد أن المنفذ 11434 مفتوح.",
+        "need_input": "أدخل prompt أو diff قبل التحليل.",
+        "need_remote": "أدخل رابط الريبو أولًا.",
+        "invalid_remote": "رابط الريبو غير مدعوم.",
+        "fetching": "جاري جلب آخر commits...",
+        "analyzing": "جاري التحليل...",
+        "building": "جاري توليد البرومبت النهائي...",
+        "save": "احفظ محليًا",
+        "insert": "أدرج الـ diff",
+        "saved": "تم حفظ الـ diff داخل التطبيق: {path}",
+        "open_saved": "افتح diff المحفوظ",
+        "fallback": "الموديل المفضل '{requested}' غير متاح. سيتم استخدام '{resolved}'.",
+        "skipped": "تم تجاهل ملفات تبدو binary: {files}",
+        "no_questions": "لا توجد أسئلة توضيحية. تم توليد البرومبت النهائي تلقائيًا.",
+        "status_ready": "جاهز",
+        "status_off": "منفصل",
+        "use_local": "المسار المحلي للقراءة فقط كسياق للكود. الربط البعيد اختياري.",
     },
 }
 
 
-@st.cache_data(show_spinner=False)
-def fetch_remote_commits(remote_url: str):
-    return get_remote_last_commits(remote_url, 5)
+def tr(key: str) -> str:
+    return COPY[st.session_state.ui_language][key]
 
 
 @st.cache_data(show_spinner=False)
-def fetch_remote_diff(remote_url: str, commit_hash: str) -> str:
-    return get_remote_commit_diff(remote_url, commit_hash)
+def fetch_remote_commits(url: str):
+    return get_remote_last_commits(url, 5)
 
 
-def initialize_state() -> None:
-    preferences = load_preferences()
-    st.session_state.setdefault("manual_diff", "")
-    st.session_state.setdefault("pending_diff_append", "")
-    st.session_state.setdefault("loaded_remote_git_url", "")
-    st.session_state.setdefault("remote_commits", [])
-    st.session_state.setdefault("analysis_result", None)
-    st.session_state.setdefault("analysis_error", "")
-    st.session_state.setdefault("remote_status", "")
-    st.session_state.setdefault("remote_refreshed_at", "")
-    st.session_state.setdefault("generated_prompt", "")
-    st.session_state.setdefault("saved_diff_message", "")
-    st.session_state.setdefault("saved_diff_path", "")
-    st.session_state.setdefault(
-        "project_path_input",
-        preferences.get("last_project_path", ""),
+@st.cache_data(show_spinner=False)
+def fetch_remote_diff(url: str, commit_hash: str) -> str:
+    return get_remote_commit_diff(url, commit_hash)
+
+
+@st.cache_data(show_spinner=False, ttl=10)
+def fetch_ollama_models() -> list[str]:
+    return OllamaProvider().list_models()
+
+
+def init_state() -> None:
+    prefs = load_preferences()
+    defaults = {
+        "prompt_text": "",
+        "manual_diff": "",
+        "pending_diff_append": "",
+        "loaded_remote_git_url": "",
+        "remote_commits": [],
+        "analysis_result": None,
+        "generated_prompt": "",
+        "analysis_error": "",
+        "saved_diff_message": "",
+        "saved_diff_path": "",
+        "analysis_signature": "",
+        "project_path_input": prefs.get("last_project_path", ""),
+        "remote_git_url_input": prefs.get("last_remote_git_url", ""),
+        "ui_language": prefs.get("last_ui_language", "en"),
+        "selected_model_input": prefs.get("last_model", DEFAULT_OLLAMA_MODEL),
+    }
+    for key, value in defaults.items():
+        st.session_state.setdefault(key, value)
+
+
+def persist_prefs() -> None:
+    save_preferences(
+        last_project_path=st.session_state.project_path_input.strip(),
+        last_remote_git_url=st.session_state.remote_git_url_input.strip(),
+        last_ui_language=st.session_state.ui_language,
+        last_model=st.session_state.selected_model_input,
     )
-    st.session_state.setdefault(
-        "remote_git_url_input",
-        preferences.get("last_remote_git_url", ""),
-    )
-    st.session_state.setdefault(
-        "ui_language",
-        preferences.get("last_ui_language", "en"),
-    )
+
+
+def clear_outputs() -> None:
+    st.session_state.analysis_result = None
+    st.session_state.generated_prompt = ""
+    st.session_state.analysis_error = ""
+    st.session_state.analysis_signature = ""
 
 
 def apply_pending_diff() -> None:
-    pending = st.session_state.get("pending_diff_append", "").strip()
+    pending = st.session_state.pending_diff_append.strip()
     if not pending:
         return
-
-    current = st.session_state.get("manual_diff", "").strip()
-    if current:
-        st.session_state.manual_diff = f"{current}\n\n{pending}\n"
-    else:
-        st.session_state.manual_diff = f"{pending}\n"
+    current = st.session_state.manual_diff.strip()
+    st.session_state.manual_diff = (
+        f"{current}\n\n{pending}\n" if current else f"{pending}\n"
+    )
     st.session_state.pending_diff_append = ""
 
 
-def clear_analysis_state() -> None:
-    st.session_state.analysis_result = None
-    st.session_state.analysis_error = ""
-    st.session_state.generated_prompt = ""
-
-
-def t(key: str, language_code: str) -> str:
-    return TEXT[language_code][key]
-
-
-def inject_styles(language_code: str) -> None:
-    app_font = "'Cairo', sans-serif" if language_code == "ar" else "inherit"
-    css = """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
-
-        :root {
-            --panel: rgba(15, 23, 42, 0.82);
-            --panel-strong: rgba(15, 23, 42, 0.95);
-            --border: rgba(148, 163, 184, 0.16);
-            --text: #e5eefb;
-            --muted: #94a3b8;
-        }
-
-        .stApp {
-            background:
-                radial-gradient(circle at top left, rgba(249, 115, 22, 0.14), transparent 28%),
-                radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 25%),
-                linear-gradient(180deg, #07111d 0%, #0b1220 42%, #0d1526 100%);
-            color: var(--text);
-            font-family: __APP_FONT__;
-        }
-
-        .stApp,
-        .stApp *:not(code):not(pre):not(kbd):not(samp) {
-            font-family: __APP_FONT__ !important;
-        }
-
-        header[data-testid="stHeader"] {
-            display: none !important;
-        }
-
-        div[data-testid="stToolbar"] {
-            display: none !important;
-        }
-
-        .block-container {
-            max-width: 1200px;
-            padding-top: 1.1rem;
-            padding-bottom: 2.5rem;
-        }
-
-        .hero {
-            background: linear-gradient(135deg, rgba(249,115,22,0.95), rgba(244,63,94,0.88) 52%, rgba(59,130,246,0.92));
-            border-radius: 24px;
-            padding: 1.2rem 1.3rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 22px 46px rgba(2, 6, 23, 0.24);
-        }
-
-        .hero h1 {
-            margin: 0;
-            color: white;
-            font-size: 2rem;
-            line-height: 1.05;
-        }
-
-        .hero p {
-            margin: 0.55rem 0 0 0;
-            color: rgba(255,255,255,0.93);
-            max-width: 780px;
-        }
-
-        .question-intro {
-            background: rgba(59, 130, 246, 0.10);
-            border: 1px solid rgba(96, 165, 250, 0.18);
-            border-radius: 18px;
-            padding: 0.95rem 1rem;
-            margin-bottom: 0.9rem;
-            animation: fadeSlide 0.45s ease both;
-        }
-
-        .question-card {
-            background: rgba(15, 23, 42, 0.76);
-            border: 1px solid rgba(148, 163, 184, 0.16);
-            border-radius: 18px;
-            padding: 0.95rem 1rem 0.4rem 1rem;
-            margin-bottom: 0.9rem;
-            animation: fadeSlide 0.45s ease both;
-        }
-
-        .remote-list {
-            display: grid;
-            gap: 0.85rem;
-            margin-top: 0.75rem;
-        }
-
-        .remote-card {
-            background: rgba(15, 23, 42, 0.66);
-            border: 1px solid rgba(148, 163, 184, 0.14);
-            border-radius: 18px;
-            padding: 0.95rem 1rem 1rem 1rem;
-        }
-
-        .remote-card-title {
-            font-size: 1.04rem;
-            font-weight: 700;
-            color: var(--text);
-            margin-bottom: 0.35rem;
-        }
-
-        .remote-card-meta {
-            color: var(--muted);
-            font-size: 0.92rem;
-            margin-bottom: 0.85rem;
-            line-height: 1.5;
-        }
-
-        .question-title {
-            font-weight: 700;
-            color: var(--text);
-            margin-bottom: 0.75rem;
-        }
-
-        @keyframes fadeSlide {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        div[data-testid="stTextArea"] textarea,
-        div[data-testid="stTextInput"] input,
-        div[data-testid="stFileUploader"] section,
-        div[data-testid="stExpander"] details,
-        div[data-testid="stCodeBlock"] pre {
-            background: var(--panel) !important;
-            color: var(--text) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: 16px !important;
-        }
-
-        div[data-testid="stTextArea"] textarea::placeholder,
-        div[data-testid="stTextInput"] input::placeholder {
-            color: var(--muted) !important;
-        }
-
-        div[data-testid="stButton"] button,
-        div[data-testid="stDownloadButton"] button {
-            border-radius: 999px !important;
-        }
-
-        div[data-testid="stButton"] button[kind="primary"] {
-            background: linear-gradient(135deg, #f97316, #f43f5e 54%, #3b82f6) !important;
-            color: white !important;
-            border: none !important;
-            font-weight: 700 !important;
-        }
-
-        div[data-testid="stButton"] button:not([kind="primary"]),
-        div[data-testid="stDownloadButton"] button {
-            background: var(--panel-strong) !important;
-            color: var(--text) !important;
-            border: 1px solid var(--border) !important;
-        }
-
-        div[data-testid="stRadio"] label,
-        div[data-testid="stMetricLabel"],
-        div[data-testid="stMetricValue"],
-        .stMarkdown, .stCaption, label, p, h1, h2, h3, h4 {
-            color: var(--text) !important;
-        }
-
-        div[data-testid="stMetric"] {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 0.8rem 1rem;
-        }
-
-        div[data-testid="stInfo"] {
-            background: rgba(37, 99, 235, 0.12);
-            border: 1px solid rgba(96, 165, 250, 0.18);
-        }
-
-        div[data-testid="stWarning"] {
-            background: rgba(217, 119, 6, 0.12);
-            border: 1px solid rgba(251, 146, 60, 0.18);
-        }
-
-        div[data-testid="stError"] {
-            background: rgba(190, 24, 93, 0.14);
-            border: 1px solid rgba(244, 114, 182, 0.18);
-        }
-        </style>
-        """
-    st.markdown(
-        css.replace("__APP_FONT__", app_font),
-        unsafe_allow_html=True,
-    )
-
-
-def render_header(language_code: str) -> None:
-    st.markdown(
-        f"""
-        <div class="hero">
-            <h1>{t("title", language_code)}</h1>
-            <p>{t("subtitle", language_code)}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.caption(t("use_local_note", language_code))
-    st.caption(t("final_note", language_code))
-
-
-def load_uploaded_diff_files(uploaded_files) -> tuple[list[tuple[str, str]], list[str]]:
-    diff_payloads: list[tuple[str, str]] = []
-    skipped_files: list[str] = []
-
-    for uploaded in uploaded_files[:10]:
+def load_uploaded(files) -> tuple[list[tuple[str, str]], list[str]]:
+    payloads, skipped = [], []
+    for uploaded in (files or [])[:10]:
         raw = uploaded.getvalue()
         if looks_like_binary_diff(raw, uploaded.name):
-            skipped_files.append(uploaded.name)
+            skipped.append(uploaded.name)
             continue
-        diff_payloads.append((uploaded.name, raw.decode("utf-8", errors="replace")))
-
-    return diff_payloads, skipped_files
-
-
-def queue_commit_diff(diff_text: str) -> None:
-    st.session_state.pending_diff_append = diff_text
-    clear_analysis_state()
+        payloads.append((uploaded.name, raw.decode("utf-8", errors="replace")))
+    return payloads, skipped
 
 
-def save_remote_diff(
-    commit_short_hash: str,
-    commit_subject: str,
-    diff_text: str,
-    language_code: str,
-) -> None:
-    try:
-        filename = f"{commit_short_hash}_{safe_filename(commit_subject)}.diff"
-        target_path = save_diff_to_app_storage(filename, diff_text)
-        st.session_state.saved_diff_message = t("saved_diff", language_code).format(
-            path=str(target_path)
-        )
-        st.session_state.saved_diff_path = str(target_path)
-        st.session_state.analysis_error = ""
-    except Exception as exc:
-        st.session_state.analysis_error = str(exc)
-
-
-def open_saved_diff_path(path_value: str) -> None:
-    target_path = Path(path_value).expanduser().resolve()
-    if not target_path.exists():
-        raise RuntimeError(f"Saved diff file was not found: {target_path}")
-
-    if os.name == "nt":
-        subprocess.run(
-            ["explorer", f"/select,{target_path}"],
-            check=False,
-        )
-        return
-
-    try:
-        os.startfile(str(target_path))  # type: ignore[attr-defined]
-    except AttributeError:
-        subprocess.run(["xdg-open", str(target_path.parent)], check=False)
-
-
-def format_display_datetime(value: str) -> str:
-    raw = value.strip()
-    if not raw:
-        return ""
-
-    normalized = raw.replace("Z", "+00:00")
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return raw
-
-    if parsed.tzinfo is None:
-        return parsed.strftime("%b %d, %Y %I:%M %p")
-    return parsed.astimezone().strftime("%b %d, %Y %I:%M %p")
-
-
-def format_current_refresh_time() -> str:
-    return datetime.now().astimezone().strftime("%b %d, %Y %I:%M %p")
-
-
-def load_remote_commits(
-    remote_git_url: str,
-    language_code: str,
-    *,
-    force_refresh: bool = False,
-) -> None:
-    clear_analysis_state()
-    st.session_state.saved_diff_message = ""
-    st.session_state.saved_diff_path = ""
-
-    if not remote_git_url.strip():
-        raise RuntimeError(t("need_remote_url", language_code))
-    if not is_valid_repo_url(remote_git_url):
-        raise RuntimeError(t("invalid_remote_url", language_code))
-
-    if force_refresh:
-        fetch_remote_commits.clear()
-        fetch_remote_diff.clear()
-
-    with st.spinner(t("fetching_commits", language_code)):
-        st.session_state.remote_commits = fetch_remote_commits(remote_git_url.strip())
-
-    st.session_state.loaded_remote_git_url = remote_git_url.strip()
-    st.session_state.remote_status = (
-        f"{t('remote_status_prefix', language_code)} {remote_git_url.strip()}"
+def signature(
+    prompt_text: str, diff_text: str, project_path: str, remote_url: str, model: str
+) -> str:
+    blob = "\x1f".join(
+        [
+            prompt_text.strip(),
+            diff_text.strip(),
+            project_path.strip(),
+            remote_url.strip(),
+            model.strip(),
+        ]
     )
-    st.session_state.remote_refreshed_at = format_current_refresh_time()
-    st.session_state.analysis_error = ""
-    save_preferences(last_remote_git_url=remote_git_url.strip())
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()
 
 
-def render_result_card(title: str, body: str) -> None:
-    with st.container(border=True):
-        st.markdown(f"#### {title}")
-        st.write(body or "No output.")
+def active_stage() -> str:
+    if st.session_state.generated_prompt:
+        return "final"
+    if st.session_state.analysis_result is None:
+        return "intake"
+    return (
+        "clarifications"
+        if st.session_state.analysis_result.followup_questions
+        else "analysis"
+    )
 
 
-def render_question_block(
-    question: ClarificationQuestion,
-    index: int,
-    language_code: str,
-) -> None:
+def fmt_dt(value: str) -> str:
+    if not value.strip():
+        return ""
+    try:
+        return (
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            .astimezone()
+            .strftime("%b %d %I:%M %p")
+        )
+    except ValueError:
+        return value
+
+
+def open_saved(path_value: str) -> None:
+    target = Path(path_value).expanduser().resolve()
+    if not target.exists():
+        raise RuntimeError(f"Saved diff file was not found: {target}")
+    if os.name == "nt":
+        subprocess.run(["explorer", f"/select,{target}"], check=False)
+    else:
+        subprocess.run(["xdg-open", str(target.parent)], check=False)
+
+
+def repo_context(project_path_input: str, changed_paths: list[str]) -> list:
+    root = None
+    if project_path_input.strip():
+        root = ensure_local_project_path(project_path_input.strip())
+    return build_repo_context(root, changed_paths)
+
+
+def inject_styles() -> None:
     st.markdown(
-        f"""
-        <div class="question-card" style="animation-delay: {index * 0.08}s;">
-            <div class="question-title">{question.question}</div>
-        </div>
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700;800&family=Material+Symbols+Outlined&display=swap');
+        :root{--bg:#131314;--low:#1b1b1c;--high:#2a2a2b;--highest:#353436;--code:#0e0e0f;--text:#e5e2e3;--muted:#8d90a2;--blue:#0052ff;--blue-soft:#b7c4ff;--danger:#ffb4ab;}
+        .stApp{background:var(--bg);color:var(--text)} .stApp *:not(code):not(pre){font-family:'Inter',sans-serif}
+        [data-testid="stHeader"],[data-testid="stToolbar"],#MainMenu,footer{display:none!important}
+        .block-container{max-width:100%;padding:0 1rem 4rem}
+        .topbar{position:sticky;top:0;z-index:50;height:56px;background:rgba(19,19,20,.98);display:flex;align-items:center;justify-content:space-between;padding:0 1rem;margin:0 -1rem 1rem;border-bottom:1px solid rgba(255,255,255,.05);backdrop-filter:blur(14px)}
+        .brand{font-family:'Space Grotesk',sans-serif!important;font-size:1.05rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:-.04em}
+        .nav{display:flex;gap:1rem;color:#8e918f;font-family:'Space Grotesk',sans-serif!important;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em}
+        .shell{display:grid;grid-template-columns:250px minmax(0,1fr);gap:1rem;align-items:start}
+        .sidebar{position:sticky;top:72px;height:calc(100vh - 88px);background:var(--low);padding:1rem .75rem;overflow:auto}
+        .side-title{padding:0 .75rem;margin-bottom:1rem}.side-title h2{margin:0;color:var(--blue);font:700 .78rem 'Space Grotesk',sans-serif!important;text-transform:uppercase;letter-spacing:.12em}.side-title p{margin:.25rem 0 0;color:#8e918f;font-size:.64rem;text-transform:uppercase;letter-spacing:.1em}
+        .stage{display:flex;gap:.65rem;align-items:center;padding:.9rem .8rem;color:#8e918f;margin-bottom:.15rem}.stage.active{background:var(--high);color:#fff;border-left:2px solid var(--blue)}
+        .icon{font-family:'Material Symbols Outlined'!important;font-size:1rem}.utility{display:flex;gap:.6rem;align-items:center;padding:.55rem .8rem;color:#8e918f;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+        .head{margin-bottom:1.25rem;padding-left:1rem;border-left:3px solid var(--blue)} .head h1{margin:0;font:700 2.5rem 'Space Grotesk',sans-serif!important;color:#fff;letter-spacing:-.04em}.head p{margin:.35rem 0 0;color:#9aa0ab}
+        .section{display:flex;justify-content:space-between;align-items:center;padding-left:.85rem;border-left:2px solid var(--blue-soft);margin-bottom:.85rem}.section h3,.section h4{margin:0;font:600 1rem 'Space Grotesk',sans-serif!important;text-transform:uppercase;color:#fff}.kicker{margin:.2rem 0 0;color:var(--muted);font-size:.62rem;text-transform:uppercase;letter-spacing:.12em}.chip{display:inline-block;background:rgba(0,82,255,.08);color:rgba(183,196,255,.8);font:.62rem ui-monospace,monospace;padding:.35rem .5rem;text-transform:uppercase;letter-spacing:.12em}
+        .panel{background:var(--low);padding:1.15rem}.panel-high{background:var(--high);padding:1.15rem}.question{background:var(--low);padding:1.25rem;margin-bottom:1rem}.qcode{color:var(--blue-soft);font:.68rem ui-monospace,monospace;margin-bottom:.5rem}.qtitle{color:#fff;font:500 1.02rem 'Space Grotesk',sans-serif!important;line-height:1.45;margin-bottom:.8rem}
+        .commit{background:var(--high);padding:.95rem;margin-bottom:.65rem}.commit h5{margin:.3rem 0 .65rem;color:#fff;font-size:.82rem;line-height:1.45}.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:.64rem;text-transform:uppercase;letter-spacing:.08em}
+        .status{position:fixed;left:0;right:0;bottom:0;height:2rem;background:rgba(19,19,20,.92);backdrop-filter:blur(12px);display:flex;justify-content:space-between;align-items:center;padding:0 1rem;border-top:1px solid rgba(255,255,255,.04);z-index:45}.status span{color:#8e918f;font:.62rem ui-monospace,monospace;text-transform:uppercase;letter-spacing:.11em}
+        .good{color:#5dd39e!important}.bad{color:#e5a29b!important}.blue{color:var(--blue-soft)!important}
+        .stTextArea textarea,.stTextInput input,.stSelectbox div[data-baseweb="select"]>div,.stFileUploader section{background:var(--high)!important;border:none!important;color:var(--text)!important;border-radius:0!important;box-shadow:none!important}
+        .stTextArea textarea,.stTextInput input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace!important}
+        .stButton button,.stDownloadButton button{width:100%;background:var(--high)!important;color:var(--text)!important;border:1px solid rgba(141,144,162,.2)!important;border-radius:0!important;box-shadow:none!important;text-transform:uppercase!important;letter-spacing:.1em!important;font-size:.7rem!important;font-weight:700!important;min-height:2.8rem!important}
+        .stButton button[kind="primary"]{background:var(--blue)!important;border-color:var(--blue)!important;color:#fff!important}
+        .stRadio label{background:var(--high);border:1px solid rgba(255,255,255,.08);padding:.8rem .9rem!important;margin:0!important;border-radius:0!important;align-items:flex-start!important}
+        .stRadio label:has(input:checked){border-color:var(--blue)!important;background:rgba(0,82,255,.12)!important}.stRadio p{color:var(--text)!important}
+        .stCodeBlock pre,.stCode code{background:var(--code)!important;border:none!important;border-radius:0!important}
+        @media (max-width:1100px){.shell{grid-template-columns:1fr}.sidebar{position:static;height:auto}.nav{display:none}.status{position:static;height:auto;flex-direction:column;align-items:flex-start;gap:.35rem;padding:.75rem 1rem;margin-top:1rem}}
+        </style>
         """,
         unsafe_allow_html=True,
     )
-    st.radio(
-        t("option_label", language_code),
-        options=question.options,
-        index=None,
-        key=f"clarification_choice_{index}",
+
+
+def sidebar(stage_name: str, available_models: list[str], model_state: str) -> None:
+    names = [
+        ("intake", "input"),
+        ("analysis", "analytics"),
+        ("clarifications", "quiz"),
+        ("final", "auto_awesome"),
+    ]
+    st.markdown('<div class="sidebar">', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="side-title"><h2>{tr("workspace")}</h2><p>v1.0.4-stable</p></div>',
+        unsafe_allow_html=True,
     )
-    st.text_area(
-        t("custom_label", language_code),
-        key=f"clarification_custom_{index}",
-        placeholder=t("custom_placeholder", language_code),
-        height=85,
-    )
-
-
-def render_analysis_result(result: AnalysisResult, language_code: str) -> None:
-    st.markdown(f"## {t('results', language_code)}")
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        render_result_card(t("agent_trying", language_code), result.agent_intent)
-    with col2:
-        render_result_card(t("user_trying", language_code), result.user_intent)
-
-    with st.container(border=True):
-        st.markdown(f"#### {t('missing_points', language_code)}")
-        if result.missing_info:
-            for item in result.missing_info:
-                st.markdown(f"- {item}")
-        else:
-            st.success(t("no_missing", language_code))
-
-    if result.followup_questions:
+    for name, icon in names:
+        active = stage_name == name or (
+            name == "analysis" and stage_name == "clarifications"
+        )
+        cls = "stage active" if active else "stage"
         st.markdown(
-            f"""
-            <div class="question-intro">
-                <strong>{t("step_two", language_code)}</strong><br>
-                {t("questions_note", language_code)}<br>
-                {t("step_two_desc", language_code)}
-            </div>
-            """,
+            f'<div class="{cls}"><span class="icon">{icon}</span><span>{tr(name if name != "final" else "final")}</span></div>',
             unsafe_allow_html=True,
         )
-        st.markdown(f"### {t('questions_title', language_code)}")
-        for index, question in enumerate(result.followup_questions):
-            render_question_block(question, index, language_code)
+    st.markdown(
+        f'<div class="utility"><span class="icon">cloud_download</span>{tr("remote")}</div><div class="utility"><span class="icon">history</span>{tr("activity")}</div><div class="utility"><span class="icon">folder_open</span>{tr("project")}</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(tr("lang"))
+    st.radio(
+        tr("lang"),
+        list(COPY.keys()),
+        format_func=lambda x: {"en": "English", "ar": "العربية"}[x],
+        key="ui_language",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    save_preferences(last_ui_language=st.session_state.ui_language)
+    if available_models:
+        st.selectbox(
+            tr("engine"),
+            available_models,
+            key="selected_model_input",
+            label_visibility="collapsed",
+        )
+        save_preferences(last_model=st.session_state.selected_model_input)
     else:
-        st.info(t("no_questions", language_code))
-
-
-def collect_clarification_answers(questions: list[ClarificationQuestion]) -> list[dict[str, str]]:
-    answers: list[dict[str, str]] = []
-    for index, question in enumerate(questions):
-        answers.append(
-            {
-                "question": question.question,
-                "selected_option": st.session_state.get(
-                    f"clarification_choice_{index}",
-                    "",
-                )
-                or "",
-                "custom_text": st.session_state.get(
-                    f"clarification_custom_{index}",
-                    "",
-                )
-                or "",
-            }
+        st.text_input(
+            tr("engine"),
+            value="No models available",
+            disabled=True,
+            label_visibility="collapsed",
         )
-    return answers
+    st.markdown(
+        f'<div class="chip" style="margin-top:.4rem;">{model_state}</div></div>',
+        unsafe_allow_html=True,
+    )
 
 
-initialize_state()
+init_state()
 apply_pending_diff()
+inject_styles()
 
-language_code = st.radio(
-    "Language",
-    options=list(LANGUAGE_OPTIONS.keys()),
-    format_func=lambda code: LANGUAGE_OPTIONS[code],
-    horizontal=True,
-    key="ui_language",
+try:
+    models = fetch_ollama_models()
+    selection = select_preferred_model(models, st.session_state.selected_model_input)
+    resolved_model = selection.resolved_model
+    if st.session_state.selected_model_input not in models:
+        st.session_state.selected_model_input = resolved_model
+    model_error = ""
+except Exception as exc:
+    models, selection, resolved_model, model_error = [], None, "", str(exc)
+
+uploaded_diffs, skipped = load_uploaded(st.session_state.get("uploaded_diff_files", []))
+combined_diff = combine_diff_sources(st.session_state.manual_diff, uploaded_diffs)
+changed_paths = extract_changed_paths(combined_diff)
+current_sig = signature(
+    st.session_state.prompt_text,
+    combined_diff,
+    st.session_state.project_path_input,
+    st.session_state.remote_git_url_input,
+    st.session_state.selected_model_input if models else "",
 )
-save_preferences(last_ui_language=language_code)
-inject_styles(language_code)
+if (
+    st.session_state.analysis_signature
+    and current_sig != st.session_state.analysis_signature
+):
+    clear_outputs()
 
-render_header(language_code)
+stage_name = active_stage()
+model_state = tr("status_ready") if models else tr("status_off")
 
-main_col, side_col = st.columns([1.7, 0.9], gap="large")
+st.markdown(
+    '<div class="topbar"><div class="brand">Prompt Optimizer</div><div class="nav"><span>MODELS</span><span>SETTINGS</span></div></div>',
+    unsafe_allow_html=True,
+)
+st.markdown('<div class="shell">', unsafe_allow_html=True)
+side_col, main_col = st.columns([1, 4], gap="medium")
+with side_col:
+    sidebar(stage_name, models, model_state)
 
-uploaded_files = []
 with main_col:
-    with st.container(border=True):
-        st.markdown(f"### {t('prompt_section', language_code)}")
-        prompt_text = st.text_area(
-            "Prompt or plan",
-            label_visibility="collapsed",
-            placeholder=t("prompt_placeholder", language_code),
-            height=170,
-            key="prompt_text",
+    if not models:
+        st.markdown(
+            f'<div class="head"><h1>{tr("ollama_off")}</h1><p>{tr("ollama_body")}</p></div>',
+            unsafe_allow_html=True,
         )
-
-    with st.container(border=True):
-        st.markdown(f"### {t('project_section', language_code)}")
-        project_path_input = st.text_input(
-            "Project path",
-            label_visibility="collapsed",
-            placeholder=t("project_placeholder", language_code),
-            help=t("project_help", language_code),
-            key="project_path_input",
-        )
-
-    with st.container(border=True):
-        st.markdown(f"### {t('diff_section', language_code)}")
-        st.text_area(
-            "Diff text",
-            label_visibility="collapsed",
-            placeholder=t("diff_placeholder", language_code),
-            height=300,
-            key="manual_diff",
-        )
-
-        upload_col, helper_col = st.columns([1.1, 0.9], gap="large")
-        with upload_col:
-            uploaded_files = st.file_uploader(
-                t("upload_label", language_code),
-                type=["diff", "patch", "txt"],
-                accept_multiple_files=True,
-                help=t("upload_help", language_code),
+        a, b = st.columns(2, gap="medium")
+        with a:
+            st.markdown(
+                f'<div class="panel"><div class="chip">STEP 01</div><div style="margin-top:.7rem">{tr("step1")}</div></div>',
+                unsafe_allow_html=True,
             )
-        with helper_col:
-            st.caption(t("upload_help", language_code))
-
-        with st.expander(t("remote_section", language_code), expanded=False):
-            top_col1, top_col2, top_col3 = st.columns([1.55, 0.6, 0.42], gap="medium")
-            with top_col1:
-                remote_git_url = st.text_input(
-                    "Remote Git URL",
-                    label_visibility="collapsed",
-                    placeholder=t("remote_placeholder", language_code),
-                    help=t("remote_help", language_code),
-                    key="remote_git_url_input",
-                )
-            with top_col2:
-                if st.button(t("fetch_commits", language_code), use_container_width=True):
-                    try:
-                        load_remote_commits(remote_git_url, language_code)
-                    except Exception as exc:
-                        st.session_state.remote_commits = []
-                        st.session_state.loaded_remote_git_url = ""
-                        st.session_state.remote_status = ""
-                        st.session_state.remote_refreshed_at = ""
-                        st.session_state.saved_diff_message = ""
-                        st.session_state.saved_diff_path = ""
-                        st.session_state.analysis_error = str(exc)
-            with top_col3:
-                if st.button(
-                    t("refresh_commits", language_code),
-                    use_container_width=True,
-                ):
-                    try:
-                        load_remote_commits(
-                            remote_git_url,
-                            language_code,
-                            force_refresh=True,
-                        )
-                    except Exception as exc:
-                        st.session_state.remote_commits = []
-                        st.session_state.loaded_remote_git_url = ""
-                        st.session_state.remote_status = ""
-                        st.session_state.remote_refreshed_at = ""
-                        st.session_state.saved_diff_message = ""
-                        st.session_state.saved_diff_path = ""
-                        st.session_state.analysis_error = str(exc)
-
-            if st.session_state.remote_status:
-                st.info(st.session_state.remote_status)
-            if st.session_state.remote_refreshed_at:
-                st.caption(
-                    t("last_refreshed", language_code).format(
-                        time=st.session_state.remote_refreshed_at
-                    )
-                )
-            if st.session_state.saved_diff_message:
-                st.success(st.session_state.saved_diff_message)
-            if st.session_state.saved_diff_path:
-                if st.button(
-                    t("open_saved_diff", language_code),
-                    key="open_saved_diff_button",
-                    use_container_width=False,
-                ):
-                    try:
-                        open_saved_diff_path(st.session_state.saved_diff_path)
-                    except Exception as exc:
-                        st.session_state.analysis_error = str(exc)
-                        st.rerun()
-
-            for commit in st.session_state.remote_commits:
-                diff_text = fetch_remote_diff(
-                    st.session_state.loaded_remote_git_url,
-                    commit.full_hash,
-                )
+        with b:
+            st.markdown(
+                f'<div class="panel-high"><div class="chip">STEP 02</div><div style="margin-top:.7rem">{tr("step2")}</div></div>',
+                unsafe_allow_html=True,
+            )
+        c1, c2 = st.columns(2, gap="medium")
+        with c1:
+            if st.button(tr("reconnect"), type="primary", use_container_width=True):
+                fetch_ollama_models.clear()
+                st.rerun()
+        with c2:
+            st.button(tr("open_logs"), use_container_width=True, disabled=True)
+        if model_error:
+            st.error(model_error)
+    elif stage_name == "final":
+        result = st.session_state.analysis_result
+        st.markdown(
+            f'<div class="head"><h1>{tr("final_title")}</h1><p>{tr("final_note")}</p></div>',
+            unsafe_allow_html=True,
+        )
+        m1, m2 = st.columns([2.2, 1], gap="large")
+        with m1:
+            st.markdown(
+                f'<div class="panel"><div class="meta"><span>markdown_prompt_final.md</span><span class="blue">{tr("copy_ready")}</span></div></div>',
+                unsafe_allow_html=True,
+            )
+            st.code(st.session_state.generated_prompt, language="markdown")
+            st.download_button(
+                tr("export"),
+                st.session_state.generated_prompt.encode("utf-8"),
+                file_name="prompt-optimizer-final.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with m2:
+            st.markdown(
+                f'<div class="panel"><div class="qtitle" style="font-size:.95rem">{tr("summary")}</div><div class="kicker">Intent</div><div>{result.user_intent if result else "--"}</div><div class="kicker" style="margin-top:1rem">Length</div><div>{len(st.session_state.generated_prompt.split())} tokens</div></div>',
+                unsafe_allow_html=True,
+            )
+    elif stage_name in {"analysis", "clarifications"}:
+        result = st.session_state.analysis_result
+        st.markdown(
+            f'<div class="head"><h1>{tr("results")}</h1><p>{tr("results_note")}</p></div>',
+            unsafe_allow_html=True,
+        )
+        top1, top2 = st.columns([2.2, 1], gap="large")
+        with top1:
+            i1, i2 = st.columns(2, gap="small")
+            with i1:
                 st.markdown(
-                    f"""
-                    <div class="remote-card">
-                        <div class="remote-card-title">{commit.subject}</div>
-                        <div class="remote-card-meta">{commit.short_hash} | {commit.author} | {format_display_datetime(commit.date)}</div>
-                    </div>
-                    """,
+                    f'<div class="panel"><div class="kicker">System Interpretation</div><div class="qtitle">{tr("agent")}</div><div>{result.agent_intent}</div></div>',
                     unsafe_allow_html=True,
                 )
-                button_col1, button_col2 = st.columns([1.2, 1.0], gap="large")
-                with button_col1:
+            with i2:
+                st.markdown(
+                    f'<div class="panel-high"><div class="kicker">User Intent</div><div class="qtitle">{tr("user")}</div><div>{result.user_intent}</div></div>',
+                    unsafe_allow_html=True,
+                )
+        with top2:
+            st.markdown(
+                f'<div class="panel"><div class="kicker">Ambiguity Report</div><div class="qtitle">{tr("missing")}</div>',
+                unsafe_allow_html=True,
+            )
+            if result.missing_info:
+                for item in result.missing_info:
+                    st.markdown(f"- {item}")
+            else:
+                st.caption(tr("no_questions"))
+            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:1rem;margin:1.6rem 0 1rem"><h2 style="margin:0;font-family:Space Grotesk,sans-serif;color:white;">{tr("clarify")}</h2><div style="flex:1;height:1px;background:rgba(255,255,255,.08)"></div></div>',
+            unsafe_allow_html=True,
+        )
+        if result.followup_questions:
+            for idx, question in enumerate(result.followup_questions):
+                st.markdown(
+                    f'<div class="question"><div class="qcode">{idx + 1:02d} // CLARIFICATION</div><div class="qtitle">{question.question}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.radio(
+                    f"q_{idx}",
+                    question.options,
+                    key=f"clarification_choice_{idx}",
+                    label_visibility="collapsed",
+                )
+                st.text_input(
+                    tr("custom"),
+                    key=f"clarification_custom_{idx}",
+                    label_visibility="collapsed",
+                    placeholder=tr("custom"),
+                )
+        else:
+            st.info(tr("no_questions"))
+    else:
+        st.markdown(
+            f'<div class="section"><div><h3>{tr("intent")}</h3><div class="kicker">{tr("intent_note")}</div></div><div class="chip">BLOCK_01</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.text_area(
+            tr("intent"),
+            key="prompt_text",
+            placeholder=tr("prompt_ph"),
+            height=210,
+            label_visibility="collapsed",
+        )
+        left, right = st.columns([2.2, 1], gap="large")
+        with left:
+            b1, b2 = st.columns(2, gap="large")
+            with b1:
+                st.markdown(
+                    f'<div class="section"><div><h4>{tr("diff")}</h4></div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.file_uploader(
+                    tr("diff"),
+                    type=["diff", "patch", "txt"],
+                    accept_multiple_files=True,
+                    key="uploaded_diff_files",
+                    label_visibility="collapsed",
+                )
+                st.text_area(
+                    tr("diff"),
+                    key="manual_diff",
+                    placeholder=tr("diff_ph"),
+                    height=220,
+                    label_visibility="collapsed",
+                )
+            with b2:
+                st.markdown(
+                    f'<div class="section"><div><h4>{tr("project")}</h4></div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.text_input(
+                    tr("project"),
+                    key="project_path_input",
+                    placeholder=tr("project_ph"),
+                    label_visibility="collapsed",
+                )
+                st.markdown(
+                    f'<div class="panel"><div class="kicker">Path</div><div class="chip">{st.session_state.project_path_input or "--"}</div><div class="kicker" style="margin-top:1rem">Diff</div><div class="chip">{len(changed_paths)} files</div></div>',
+                    unsafe_allow_html=True,
+                )
+        with right:
+            st.markdown(
+                f'<div class="panel"><div class="kicker">{tr("remote")}</div>',
+                unsafe_allow_html=True,
+            )
+            st.text_input(
+                tr("remote"),
+                key="remote_git_url_input",
+                placeholder=tr("remote_ph"),
+                label_visibility="collapsed",
+            )
+            f1, f2 = st.columns(2, gap="small")
+            with f1:
+                if st.button(tr("fetch"), use_container_width=True):
+                    try:
+                        if not st.session_state.remote_git_url_input.strip():
+                            raise RuntimeError(tr("need_remote"))
+                        if not is_valid_repo_url(st.session_state.remote_git_url_input):
+                            raise RuntimeError(tr("invalid_remote"))
+                        with st.spinner(tr("fetching")):
+                            st.session_state.remote_commits = fetch_remote_commits(
+                                st.session_state.remote_git_url_input.strip()
+                            )
+                        st.session_state.loaded_remote_git_url = (
+                            st.session_state.remote_git_url_input.strip()
+                        )
+                        persist_prefs()
+                        st.rerun()
+                    except Exception as exc:
+                        st.session_state.analysis_error = str(exc)
+            with f2:
+                if st.button(tr("refresh"), use_container_width=True):
+                    fetch_remote_commits.clear()
+                    fetch_remote_diff.clear()
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="panel" style="margin-top:1rem;"><div class="kicker">{tr("activity")}</div>',
+                unsafe_allow_html=True,
+            )
+            for commit in st.session_state.remote_commits:
+                diff_text = fetch_remote_diff(
+                    st.session_state.loaded_remote_git_url, commit.full_hash
+                )
+                st.markdown(
+                    f'<div class="commit"><div class="meta"><span>#{commit.short_hash}</span><span>{fmt_dt(commit.date)}</span></div><h5>{commit.subject}</h5></div>',
+                    unsafe_allow_html=True,
+                )
+                x, y = st.columns(2, gap="small")
+                with x:
                     if st.button(
-                        t("save_diff", language_code).format(short_hash=commit.short_hash),
+                        tr("save"),
                         key=f"save_{commit.full_hash}",
                         use_container_width=True,
                     ):
-                        save_remote_diff(
-                            commit_short_hash=commit.short_hash,
-                            commit_subject=commit.subject,
-                            diff_text=diff_text,
-                            language_code=language_code,
+                        path = save_diff_to_app_storage(
+                            f"{commit.short_hash}_{safe_filename(commit.subject)}.diff",
+                            diff_text,
                         )
+                        st.session_state.saved_diff_message = tr("saved").format(
+                            path=str(path)
+                        )
+                        st.session_state.saved_diff_path = str(path)
                         st.rerun()
-                with button_col2:
+                with y:
                     if st.button(
-                        t("put_in_diff", language_code),
+                        tr("insert"),
                         key=f"insert_{commit.full_hash}",
                         use_container_width=True,
                     ):
-                        queue_commit_diff(diff_text)
+                        st.session_state.pending_diff_append = diff_text
                         st.rerun()
-
-with side_col:
-    uploaded_diffs, skipped_binary_files = load_uploaded_diff_files(uploaded_files or [])
-    combined_diff = combine_diff_sources(st.session_state.manual_diff, uploaded_diffs)
-    changed_paths = extract_changed_paths(combined_diff)
-
-    st.markdown(f"### {t('settings', language_code)}")
-    st.metric(
-        t("prompt_ready", language_code),
-        t("ready_value", language_code) if prompt_text.strip() else t("missing", language_code),
-    )
-    st.metric(
-        t("project_ready", language_code),
-        t("ready_value", language_code) if project_path_input.strip() else t("missing", language_code),
-    )
-    st.metric(t("changed_files", language_code), str(len(changed_paths)))
-
-    if skipped_binary_files:
-        st.warning(
-            t("skipped_files", language_code).format(
-                files=", ".join(skipped_binary_files)
+            st.markdown("</div>", unsafe_allow_html=True)
+        if selection is not None and selection.used_fallback:
+            st.warning(
+                tr("fallback").format(
+                    requested=selection.requested_model,
+                    resolved=selection.resolved_model,
+                )
             )
-        )
+        if skipped:
+            st.warning(tr("skipped").format(files=", ".join(skipped)))
+        if st.session_state.saved_diff_message:
+            st.success(st.session_state.saved_diff_message)
+        if st.session_state.saved_diff_path and st.button(
+            tr("open_saved"), use_container_width=False
+        ):
+            open_saved(st.session_state.saved_diff_path)
+        st.caption(tr("use_local"))
 
-    st.markdown(f"### {t('run', language_code)}")
-    analyze_clicked = st.button(
-        t("analyze", language_code),
-        type="primary",
-        use_container_width=True,
-    )
+st.markdown("</div>", unsafe_allow_html=True)
 
-    finalize_clicked = False
-    if st.session_state.analysis_result is not None:
-        finalize_clicked = st.button(
-            t("generate_final", language_code),
-            use_container_width=True,
-        )
-
-    st.caption(t("flow_note", language_code))
-
-if analyze_clicked or finalize_clicked:
-    previous_result = st.session_state.analysis_result
-    uploaded_diffs, skipped_binary_files = load_uploaded_diff_files(uploaded_files or [])
-    combined_diff = combine_diff_sources(st.session_state.manual_diff, uploaded_diffs)
-    changed_paths = extract_changed_paths(combined_diff)
-
-    if not prompt_text.strip() and not combined_diff.strip():
-        st.session_state.analysis_error = t("need_input", language_code)
-    elif analyze_clicked:
-        clear_analysis_state()
-        try:
-            with st.spinner(t("analyzing", language_code)):
-                project_path = None
-                if project_path_input.strip():
-                    project_path = ensure_local_project_path(project_path_input.strip())
-                    save_preferences(last_project_path=project_path_input.strip())
-                if st.session_state.get("remote_git_url_input", "").strip():
-                    save_preferences(
-                        last_remote_git_url=st.session_state.remote_git_url_input.strip()
-                    )
-
-                repo_context = build_repo_context(project_path, changed_paths)
-                result = analyze_for_clarification(
-                    prompt_text=prompt_text,
-                    diff_text=combined_diff,
-                    repo_context=repo_context,
-                    ui_language="Arabic" if language_code == "ar" else "English",
-                    model=DEFAULT_MODEL,
+if (
+    models
+    and stage_name == "intake"
+    and st.button(tr("analyze"), type="primary", use_container_width=True)
+):
+    try:
+        if not st.session_state.prompt_text.strip() and not combined_diff.strip():
+            raise RuntimeError(tr("need_input"))
+        persist_prefs()
+        with st.spinner(tr("analyzing")):
+            context = repo_context(st.session_state.project_path_input, changed_paths)
+            result = analyze_for_clarification(
+                st.session_state.prompt_text,
+                combined_diff,
+                context,
+                "Arabic" if st.session_state.ui_language == "ar" else "English",
+                model=resolved_model,
+                provider=OllamaProvider(),
+            )
+        st.session_state.analysis_result = result
+        st.session_state.analysis_signature = current_sig
+        st.session_state.analysis_error = ""
+        if not result.followup_questions:
+            with st.spinner(tr("building")):
+                st.session_state.generated_prompt = generate_final_prompt(
+                    st.session_state.prompt_text,
+                    combined_diff,
+                    context,
+                    result,
+                    [],
+                    model=resolved_model,
+                    provider=OllamaProvider(),
                 )
-            st.session_state.analysis_result = result
-            st.session_state.analysis_error = ""
-            st.session_state.generated_prompt = ""
-        except Exception as exc:
-            st.session_state.analysis_error = str(exc)
-    elif finalize_clicked and previous_result is not None:
-        try:
-            with st.spinner(t("building_prompt", language_code)):
-                project_path = None
-                if project_path_input.strip():
-                    project_path = ensure_local_project_path(project_path_input.strip())
-                    save_preferences(last_project_path=project_path_input.strip())
-                if st.session_state.get("remote_git_url_input", "").strip():
-                    save_preferences(
-                        last_remote_git_url=st.session_state.remote_git_url_input.strip()
-                    )
+        st.rerun()
+    except Exception as exc:
+        st.session_state.analysis_error = str(exc)
+        st.rerun()
+elif (
+    models
+    and stage_name == "clarifications"
+    and st.button(tr("generate"), type="primary", use_container_width=True)
+):
+    try:
+        answers = []
+        for idx, question in enumerate(
+            st.session_state.analysis_result.followup_questions
+        ):
+            answers.append(
+                {
+                    "question": question.question,
+                    "selected_option": st.session_state.get(
+                        f"clarification_choice_{idx}", ""
+                    ),
+                    "custom_text": st.session_state.get(
+                        f"clarification_custom_{idx}", ""
+                    ),
+                }
+            )
+        with st.spinner(tr("building")):
+            context = repo_context(st.session_state.project_path_input, changed_paths)
+            st.session_state.generated_prompt = generate_final_prompt(
+                st.session_state.prompt_text,
+                combined_diff,
+                context,
+                st.session_state.analysis_result,
+                answers,
+                model=resolved_model,
+                provider=OllamaProvider(),
+            )
+        st.session_state.analysis_error = ""
+        st.session_state.analysis_signature = current_sig
+        st.rerun()
+    except Exception as exc:
+        st.session_state.analysis_error = str(exc)
+        st.rerun()
+elif stage_name == "final" and st.button(
+    tr("restart"), type="primary", use_container_width=True
+):
+    clear_outputs()
+    st.rerun()
 
-                repo_context = build_repo_context(project_path, changed_paths)
-                clarification_answers = collect_clarification_answers(
-                    previous_result.followup_questions
-                )
-                final_prompt = generate_final_prompt(
-                    prompt_text=prompt_text,
-                    diff_text=combined_diff,
-                    repo_context=repo_context,
-                    analysis_result=previous_result,
-                    clarification_answers=clarification_answers,
-                    model=DEFAULT_MODEL,
-                )
-            st.session_state.generated_prompt = final_prompt
-            st.session_state.analysis_error = ""
-        except Exception as exc:
-            st.session_state.analysis_error = str(exc)
-
-if st.session_state.analysis_error:
+if st.session_state.analysis_error and models:
     st.error(st.session_state.analysis_error)
 
-if st.session_state.analysis_result:
-    render_analysis_result(st.session_state.analysis_result, language_code)
-
-if st.session_state.generated_prompt:
-    with st.container(border=True):
-        st.markdown(f"### {t('final_prompt_title', language_code)}")
-        st.code(st.session_state.generated_prompt, language="markdown")
-
-st.caption(t("use_local_note", language_code))
+path_label = st.session_state.project_path_input.strip() or "--"
+status_class = "good" if models else "bad"
+st.markdown(
+    f'<div class="status"><div style="display:flex;gap:1rem;flex-wrap:wrap;"><span class="{status_class}">OLLAMA STATUS: {model_state}</span><span class="blue">DIFF: {len(changed_paths)} FILES</span><span>PATH: {path_label}</span></div><div style="display:flex;gap:1rem;"><span>{stage_name.upper()}</span><span class="blue">{tr("status_ready")}</span></div></div>',
+    unsafe_allow_html=True,
+)

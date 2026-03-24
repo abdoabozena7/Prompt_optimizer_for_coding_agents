@@ -1,2 +1,1 @@
-"""Prompt optimizer application package."""
-
+"""Prompt Optimizer application package."""

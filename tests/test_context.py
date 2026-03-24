@@ -11,7 +11,9 @@ def write_file(path: Path, content: str) -> None:
 def test_build_repo_context_prefers_changed_and_related_files(tmp_path: Path):
     write_file(tmp_path / "app" / "service.py", "def changed():\n    return 1\n")
     write_file(tmp_path / "app" / "__init__.py", "from .service import changed\n")
-    write_file(tmp_path / "app" / "service_test.py", "def test_changed():\n    assert True\n")
+    write_file(
+        tmp_path / "app" / "service_test.py", "def test_changed():\n    assert True\n"
+    )
     write_file(tmp_path / "README.md", "top level")
 
     snippets = build_repo_context(tmp_path, ["app/service.py"])
@@ -24,4 +26,3 @@ def test_build_repo_context_prefers_changed_and_related_files(tmp_path: Path):
 
 def test_build_repo_context_skips_missing_files(tmp_path: Path):
     assert build_repo_context(tmp_path, ["missing.py"]) == []
-

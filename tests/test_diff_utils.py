@@ -42,4 +42,3 @@ def test_combine_diff_sources():
     )
     assert "a.py" in combined
     assert "Uploaded diff: b.diff" in combined
-

@@ -6,9 +6,18 @@ from prompt_optimizer.repo_ops import parse_remote_repo_url
 @pytest.mark.parametrize(
     ("url", "expected"),
     [
-        ("https://github.com/openai/openai-python", ("github", "openai", "openai-python")),
-        ("https://github.com/openai/openai-python.git", ("github", "openai", "openai-python")),
-        ("https://gitlab.com/group/subgroup/project", ("gitlab", "group/subgroup", "project")),
+        (
+            "https://github.com/openai/openai-python",
+            ("github", "openai", "openai-python"),
+        ),
+        (
+            "https://github.com/openai/openai-python.git",
+            ("github", "openai", "openai-python"),
+        ),
+        (
+            "https://gitlab.com/group/subgroup/project",
+            ("gitlab", "group/subgroup", "project"),
+        ),
     ],
 )
 def test_parse_remote_repo_url(url, expected):

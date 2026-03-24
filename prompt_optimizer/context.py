@@ -4,7 +4,6 @@ from pathlib import Path
 
 from prompt_optimizer.models import RepoContextSnippet
 
-
 MAX_FILE_CHARS = 6000
 RELATED_FILES_PER_DIR = 2
 
@@ -54,7 +53,9 @@ def _candidate_related_files(target_path: Path) -> list[Path]:
     return [path for _, path in scored[:RELATED_FILES_PER_DIR]]
 
 
-def build_repo_context(repo_path: Path | None, changed_paths: list[str]) -> list[RepoContextSnippet]:
+def build_repo_context(
+    repo_path: Path | None, changed_paths: list[str]
+) -> list[RepoContextSnippet]:
     if repo_path is None:
         return []
 

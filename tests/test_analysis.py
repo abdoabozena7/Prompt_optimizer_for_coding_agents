@@ -3,8 +3,8 @@ import pytest
 from prompt_optimizer.analysis import (
     build_analysis_payload,
     build_final_prompt_payload,
-    parse_final_prompt_response,
     parse_analysis_response,
+    parse_final_prompt_response,
 )
 from prompt_optimizer.models import AnalysisResult, RepoContextSnippet
 
@@ -15,7 +15,9 @@ def test_build_analysis_payload_contains_all_inputs():
         diff_text="diff --git a/app.py b/app.py",
         ui_language="Arabic",
         repo_context=[
-            RepoContextSnippet(path="app.py", content="print('x')", reason="changed file")
+            RepoContextSnippet(
+                path="app.py", content="print('x')", reason="changed file"
+            )
         ],
     )
 
@@ -30,7 +32,9 @@ def test_build_final_prompt_payload_contains_answers():
         prompt_text="Add auth",
         diff_text="diff --git a/app.py b/app.py",
         repo_context=[
-            RepoContextSnippet(path="app.py", content="print('x')", reason="changed file")
+            RepoContextSnippet(
+                path="app.py", content="print('x')", reason="changed file"
+            )
         ],
         analysis_result=AnalysisResult(
             agent_intent="Implement login flow",

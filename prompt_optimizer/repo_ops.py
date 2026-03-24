@@ -7,9 +7,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+from requests import RequestException
 
 from prompt_optimizer.models import CommitInfo
-
 
 BASE_DIR = Path("cloned_repos")
 BASE_DIR.mkdir(exist_ok=True)
@@ -191,28 +191,67 @@ def _github_headers() -> dict[str, str]:
     }
 
 
+def _request_json(
+    url: str,
+    *,
+    timeout: int = 20,
+    headers: dict[str, str] | None = None,
+    params: dict[str, str | int] | None = None,
+    provider_name: str,
+) -> dict | list:
+    try:
+        response = requests.get(
+            url,
+            headers=headers,
+            params=params,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+    except RequestException as exc:
+        raise RuntimeError(f"Failed to reach {provider_name}: {exc}") from exc
+    except ValueError as exc:
+        raise RuntimeError(f"{provider_name} returned invalid JSON.") from exc
+
+
+def _request_text(
+    url: str,
+    *,
+    timeout: int = 20,
+    provider_name: str,
+) -> str:
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+    except RequestException as exc:
+        raise RuntimeError(f"Failed to reach {provider_name}: {exc}") from exc
+    return response.text
+
+
 def get_remote_last_commits(repo_url: str, count: int = 5) -> list[CommitInfo]:
     provider, namespace, repo = parse_remote_repo_url(repo_url)
 
     if provider == "github":
-        repo_response = requests.get(
+        repo_payload = _request_json(
             f"https://api.github.com/repos/{namespace}/{repo}",
+            provider_name="GitHub",
             headers=_github_headers(),
-            timeout=20,
         )
-        repo_response.raise_for_status()
-        default_branch = repo_response.json()["default_branch"]
+        if not isinstance(repo_payload, dict):
+            raise RuntimeError("GitHub returned an unexpected repository payload.")
+        default_branch = str(repo_payload["default_branch"])
 
-        commits_response = requests.get(
+        commits_payload = _request_json(
             f"https://api.github.com/repos/{namespace}/{repo}/commits",
+            provider_name="GitHub",
             headers=_github_headers(),
             params={"sha": default_branch, "per_page": count},
-            timeout=20,
         )
-        commits_response.raise_for_status()
+        if not isinstance(commits_payload, list):
+            raise RuntimeError("GitHub returned an unexpected commits payload.")
 
         commits: list[CommitInfo] = []
-        for item in commits_response.json():
+        for item in commits_payload:
             commit = item["commit"]
             message = commit["message"].splitlines()[0].strip()
             author = commit.get("author") or {}
@@ -228,22 +267,24 @@ def get_remote_last_commits(repo_url: str, count: int = 5) -> list[CommitInfo]:
         return commits
 
     project_id = quote(f"{namespace}/{repo}", safe="")
-    project_response = requests.get(
+    project_payload = _request_json(
         f"https://gitlab.com/api/v4/projects/{project_id}",
-        timeout=20,
+        provider_name="GitLab",
     )
-    project_response.raise_for_status()
-    default_branch = project_response.json()["default_branch"]
+    if not isinstance(project_payload, dict):
+        raise RuntimeError("GitLab returned an unexpected project payload.")
+    default_branch = str(project_payload["default_branch"])
 
-    commits_response = requests.get(
+    commits_payload = _request_json(
         f"https://gitlab.com/api/v4/projects/{project_id}/repository/commits",
+        provider_name="GitLab",
         params={"ref_name": default_branch, "per_page": count},
-        timeout=20,
     )
-    commits_response.raise_for_status()
+    if not isinstance(commits_payload, list):
+        raise RuntimeError("GitLab returned an unexpected commits payload.")
 
     commits = []
-    for item in commits_response.json():
+    for item in commits_payload:
         title = item.get("title") or item.get("message", "").splitlines()[0].strip()
         commits.append(
             CommitInfo(
@@ -261,16 +302,12 @@ def get_remote_commit_diff(repo_url: str, commit_hash: str) -> str:
     provider, namespace, repo = parse_remote_repo_url(repo_url)
 
     if provider == "github":
-        response = requests.get(
+        return _request_text(
             f"https://github.com/{namespace}/{repo}/commit/{commit_hash}.diff",
-            timeout=20,
+            provider_name="GitHub",
         )
-        response.raise_for_status()
-        return response.text
 
-    response = requests.get(
+    return _request_text(
         f"https://gitlab.com/{namespace}/{repo}/-/commit/{commit_hash}.diff",
-        timeout=20,
+        provider_name="GitLab",
     )
-    response.raise_for_status()
-    return response.text

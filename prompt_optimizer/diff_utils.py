@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 DIFF_FILE_PATTERNS = (
     re.compile(r"^\+\+\+ [ab]/(.+)$"),
     re.compile(r"^diff --git a/(.+?) b/(.+)$"),
@@ -50,7 +49,9 @@ def extract_changed_paths(diff_text: str) -> list[str]:
     return [path for path in paths if path and not path.endswith("/dev/null")]
 
 
-def combine_diff_sources(manual_diff: str, uploaded_diffs: list[tuple[str, str]]) -> str:
+def combine_diff_sources(
+    manual_diff: str, uploaded_diffs: list[tuple[str, str]]
+) -> str:
     """Combine manual and uploaded diff content into one analysis payload."""
     chunks: list[str] = []
 
@@ -71,4 +72,3 @@ def looks_like_binary_diff(content: bytes, filename: str) -> bool:
         return True
     suffix = Path(filename).suffix.lower()
     return suffix in {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".exe"}
-

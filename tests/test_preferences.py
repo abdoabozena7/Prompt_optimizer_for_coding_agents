@@ -18,3 +18,10 @@ def test_preferences_round_trip(tmp_path, monkeypatch):
 def test_preferences_handles_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(preferences, "PREFERENCES_PATH", tmp_path / "missing.json")
     assert preferences.load_preferences() == {}
+
+
+def test_default_preferences_path_uses_env_override(tmp_path, monkeypatch):
+    override = tmp_path / "custom-state.json"
+    monkeypatch.setenv(preferences.PREFERENCES_ENV_VAR, str(override))
+
+    assert preferences._default_preferences_path() == override
