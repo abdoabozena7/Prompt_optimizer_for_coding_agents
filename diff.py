@@ -297,29 +297,31 @@ def inject_styles() -> None:
         :root{--bg:#131314;--low:#1b1b1c;--high:#2a2a2b;--highest:#353436;--code:#0e0e0f;--text:#e5e2e3;--muted:#8d90a2;--blue:#0052ff;--blue-soft:#b7c4ff;--danger:#ffb4ab;}
         .stApp{background:var(--bg);color:var(--text)} .stApp *:not(code):not(pre){font-family:'Inter',sans-serif}
         [data-testid="stHeader"],[data-testid="stToolbar"],#MainMenu,footer{display:none!important}
-        .block-container{max-width:100%;padding:0 1rem 4rem}
+        .block-container{max-width:100%;padding:0 clamp(.75rem,1.4vw,1.25rem) 2rem}
         .topbar{position:sticky;top:0;z-index:50;height:56px;background:rgba(19,19,20,.98);display:flex;align-items:center;justify-content:space-between;padding:0 1rem;margin:0 -1rem 1rem;border-bottom:1px solid rgba(255,255,255,.05);backdrop-filter:blur(14px)}
         .brand{font-family:'Space Grotesk',sans-serif!important;font-size:1.05rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:-.04em}
         .nav{display:flex;gap:1rem;color:#8e918f;font-family:'Space Grotesk',sans-serif!important;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em}
-        .shell{display:grid;grid-template-columns:250px minmax(0,1fr);gap:1rem;align-items:start}
-        .sidebar{position:sticky;top:72px;height:calc(100vh - 88px);background:var(--low);padding:1rem .75rem;overflow:auto}
+        .shell{display:grid;grid-template-columns:minmax(220px,250px) minmax(0,1fr);gap:1rem;align-items:start}
+        .sidebar{position:sticky;top:72px;max-height:calc(100dvh - 88px);background:var(--low);padding:1rem .75rem;overflow:auto}
         .side-title{padding:0 .75rem;margin-bottom:1rem}.side-title h2{margin:0;color:var(--blue);font:700 .78rem 'Space Grotesk',sans-serif!important;text-transform:uppercase;letter-spacing:.12em}.side-title p{margin:.25rem 0 0;color:#8e918f;font-size:.64rem;text-transform:uppercase;letter-spacing:.1em}
         .stage{display:flex;gap:.65rem;align-items:center;padding:.9rem .8rem;color:#8e918f;margin-bottom:.15rem}.stage.active{background:var(--high);color:#fff;border-left:2px solid var(--blue)}
         .icon{font-family:'Material Symbols Outlined'!important;font-size:1rem}.utility{display:flex;gap:.6rem;align-items:center;padding:.55rem .8rem;color:#8e918f;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
-        .head{margin-bottom:1.25rem;padding-left:1rem;border-left:3px solid var(--blue)} .head h1{margin:0;font:700 2.5rem 'Space Grotesk',sans-serif!important;color:#fff;letter-spacing:-.04em}.head p{margin:.35rem 0 0;color:#9aa0ab}
+        .head{margin-bottom:1.25rem;padding-left:1rem;border-left:3px solid var(--blue)} .head h1{margin:0;font:700 clamp(1.8rem,3vw,2.5rem) 'Space Grotesk',sans-serif!important;color:#fff;letter-spacing:-.04em}.head p{margin:.35rem 0 0;color:#9aa0ab}
         .section{display:flex;justify-content:space-between;align-items:center;padding-left:.85rem;border-left:2px solid var(--blue-soft);margin-bottom:.85rem}.section h3,.section h4{margin:0;font:600 1rem 'Space Grotesk',sans-serif!important;text-transform:uppercase;color:#fff}.kicker{margin:.2rem 0 0;color:var(--muted);font-size:.62rem;text-transform:uppercase;letter-spacing:.12em}.chip{display:inline-block;background:rgba(0,82,255,.08);color:rgba(183,196,255,.8);font:.62rem ui-monospace,monospace;padding:.35rem .5rem;text-transform:uppercase;letter-spacing:.12em}
         .panel{background:var(--low);padding:1.15rem}.panel-high{background:var(--high);padding:1.15rem}.question{background:var(--low);padding:1.25rem;margin-bottom:1rem}.qcode{color:var(--blue-soft);font:.68rem ui-monospace,monospace;margin-bottom:.5rem}.qtitle{color:#fff;font:500 1.02rem 'Space Grotesk',sans-serif!important;line-height:1.45;margin-bottom:.8rem}
         .commit{background:var(--high);padding:.95rem;margin-bottom:.65rem}.commit h5{margin:.3rem 0 .65rem;color:#fff;font-size:.82rem;line-height:1.45}.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:.64rem;text-transform:uppercase;letter-spacing:.08em}
+        .remote-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
         .status{position:fixed;left:0;right:0;bottom:0;height:2rem;background:rgba(19,19,20,.92);backdrop-filter:blur(12px);display:flex;justify-content:space-between;align-items:center;padding:0 1rem;border-top:1px solid rgba(255,255,255,.04);z-index:45}.status span{color:#8e918f;font:.62rem ui-monospace,monospace;text-transform:uppercase;letter-spacing:.11em}
         .good{color:#5dd39e!important}.bad{color:#e5a29b!important}.blue{color:var(--blue-soft)!important}
         .stTextArea textarea,.stTextInput input,.stSelectbox div[data-baseweb="select"]>div,.stFileUploader section{background:var(--high)!important;border:none!important;color:var(--text)!important;border-radius:0!important;box-shadow:none!important}
         .stTextArea textarea,.stTextInput input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace!important}
-        .stButton button,.stDownloadButton button{width:100%;background:var(--high)!important;color:var(--text)!important;border:1px solid rgba(141,144,162,.2)!important;border-radius:0!important;box-shadow:none!important;text-transform:uppercase!important;letter-spacing:.1em!important;font-size:.7rem!important;font-weight:700!important;min-height:2.8rem!important}
-        .stButton button[kind="primary"]{background:var(--blue)!important;border-color:var(--blue)!important;color:#fff!important}
+        .stButton button,.stDownloadButton button,.stFormSubmitButton button{width:100%;background:var(--high)!important;color:var(--text)!important;border:1px solid rgba(141,144,162,.2)!important;border-radius:0!important;box-shadow:none!important;text-transform:uppercase!important;letter-spacing:.1em!important;font-size:.7rem!important;font-weight:700!important;min-height:2.8rem!important}
+        .stButton button[kind="primary"],.stFormSubmitButton button[kind="primary"]{background:var(--blue)!important;border-color:var(--blue)!important;color:#fff!important}
         .stRadio label{background:var(--high);border:1px solid rgba(255,255,255,.08);padding:.8rem .9rem!important;margin:0!important;border-radius:0!important;align-items:flex-start!important}
         .stRadio label:has(input:checked){border-color:var(--blue)!important;background:rgba(0,82,255,.12)!important}.stRadio p{color:var(--text)!important}
         .stCodeBlock pre,.stCode code{background:var(--code)!important;border:none!important;border-radius:0!important}
-        @media (max-width:1100px){.shell{grid-template-columns:1fr}.sidebar{position:static;height:auto}.nav{display:none}.status{position:static;height:auto;flex-direction:column;align-items:flex-start;gap:.35rem;padding:.75rem 1rem;margin-top:1rem}}
+        @media (max-width:1400px){.status{position:static;height:auto;flex-direction:column;align-items:flex-start;gap:.35rem;padding:.75rem 1rem;margin-top:1rem}}
+        @media (max-width:1100px){.shell{grid-template-columns:1fr}.sidebar{position:static;max-height:none}.nav{display:none}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -414,6 +416,9 @@ if (
 
 stage_name = active_stage()
 model_state = tr("status_ready") if models else tr("status_off")
+analyze_submitted = False
+generate_submitted = False
+restart_clicked = False
 
 st.markdown(
     '<div class="topbar"><div class="brand">Prompt Optimizer</div><div class="nav"><span>MODELS</span><span>SETTINGS</span></div></div>',
@@ -456,13 +461,13 @@ with main_col:
             f'<div class="head"><h1>{tr("final_title")}</h1><p>{tr("final_note")}</p></div>',
             unsafe_allow_html=True,
         )
-        m1, m2 = st.columns([2.2, 1], gap="large")
-        with m1:
-            st.markdown(
-                f'<div class="panel"><div class="meta"><span>markdown_prompt_final.md</span><span class="blue">{tr("copy_ready")}</span></div></div>',
-                unsafe_allow_html=True,
-            )
-            st.code(st.session_state.generated_prompt, language="markdown")
+        st.markdown(
+            f'<div class="panel"><div class="meta"><span>markdown_prompt_final.md</span><span class="blue">{tr("copy_ready")}</span></div></div>',
+            unsafe_allow_html=True,
+        )
+        st.code(st.session_state.generated_prompt, language="markdown")
+        action_a, action_b = st.columns(2, gap="small")
+        with action_a:
             st.download_button(
                 tr("export"),
                 st.session_state.generated_prompt.encode("utf-8"),
@@ -470,9 +475,21 @@ with main_col:
                 mime="text/markdown",
                 use_container_width=True,
             )
-        with m2:
+        with action_b:
+            restart_clicked = st.button(
+                tr("restart"),
+                type="primary",
+                use_container_width=True,
+            )
+        summary_a, summary_b = st.columns(2, gap="large")
+        with summary_a:
             st.markdown(
-                f'<div class="panel"><div class="qtitle" style="font-size:.95rem">{tr("summary")}</div><div class="kicker">Intent</div><div>{result.user_intent if result else "--"}</div><div class="kicker" style="margin-top:1rem">Length</div><div>{len(st.session_state.generated_prompt.split())} tokens</div></div>',
+                f'<div class="panel"><div class="qtitle" style="font-size:.95rem">{tr("summary")}</div><div class="kicker">Intent</div><div>{result.user_intent if result else "--"}</div></div>',
+                unsafe_allow_html=True,
+            )
+        with summary_b:
+            st.markdown(
+                f'<div class="panel"><div class="kicker">Length</div><div class="chip">{len(st.session_state.generated_prompt.split())} tokens</div><div class="kicker" style="margin-top:1rem">Stage</div><div class="chip">FINAL</div></div>',
                 unsafe_allow_html=True,
             )
     elif stage_name in {"analysis", "clarifications"}:
@@ -527,6 +544,11 @@ with main_col:
                     label_visibility="collapsed",
                     placeholder=tr("custom"),
                 )
+            generate_submitted = st.button(
+                tr("generate"),
+                type="primary",
+                use_container_width=True,
+            )
         else:
             st.info(tr("no_questions"))
     else:
@@ -541,116 +563,116 @@ with main_col:
             height=210,
             label_visibility="collapsed",
         )
-        left, right = st.columns([2.2, 1], gap="large")
-        with left:
-            b1, b2 = st.columns(2, gap="large")
-            with b1:
-                st.markdown(
-                    f'<div class="section"><div><h4>{tr("diff")}</h4></div></div>',
-                    unsafe_allow_html=True,
-                )
-                st.file_uploader(
-                    tr("diff"),
-                    type=["diff", "patch", "txt"],
-                    accept_multiple_files=True,
-                    key="uploaded_diff_files",
-                    label_visibility="collapsed",
-                )
-                st.text_area(
-                    tr("diff"),
-                    key="manual_diff",
-                    placeholder=tr("diff_ph"),
-                    height=220,
-                    label_visibility="collapsed",
-                )
-            with b2:
-                st.markdown(
-                    f'<div class="section"><div><h4>{tr("project")}</h4></div></div>',
-                    unsafe_allow_html=True,
-                )
-                st.text_input(
-                    tr("project"),
-                    key="project_path_input",
-                    placeholder=tr("project_ph"),
-                    label_visibility="collapsed",
-                )
-                st.markdown(
-                    f'<div class="panel"><div class="kicker">Path</div><div class="chip">{st.session_state.project_path_input or "--"}</div><div class="kicker" style="margin-top:1rem">Diff</div><div class="chip">{len(changed_paths)} files</div></div>',
-                    unsafe_allow_html=True,
-                )
-        with right:
+        b1, b2 = st.columns([1.35, 1], gap="large")
+        with b1:
             st.markdown(
-                f'<div class="panel"><div class="kicker">{tr("remote")}</div>',
+                f'<div class="section"><div><h4>{tr("diff")}</h4></div></div>',
+                unsafe_allow_html=True,
+            )
+            st.file_uploader(
+                tr("diff"),
+                type=["diff", "patch", "txt"],
+                accept_multiple_files=True,
+                key="uploaded_diff_files",
+                label_visibility="collapsed",
+            )
+            st.text_area(
+                tr("diff"),
+                key="manual_diff",
+                placeholder=tr("diff_ph"),
+                height=220,
+                label_visibility="collapsed",
+            )
+        with b2:
+            st.markdown(
+                f'<div class="section"><div><h4>{tr("project")}</h4></div></div>',
                 unsafe_allow_html=True,
             )
             st.text_input(
-                tr("remote"),
-                key="remote_git_url_input",
-                placeholder=tr("remote_ph"),
+                tr("project"),
+                key="project_path_input",
+                placeholder=tr("project_ph"),
                 label_visibility="collapsed",
             )
-            f1, f2 = st.columns(2, gap="small")
-            with f1:
-                if st.button(tr("fetch"), use_container_width=True):
-                    try:
-                        if not st.session_state.remote_git_url_input.strip():
-                            raise RuntimeError(tr("need_remote"))
-                        if not is_valid_repo_url(st.session_state.remote_git_url_input):
-                            raise RuntimeError(tr("invalid_remote"))
-                        with st.spinner(tr("fetching")):
-                            st.session_state.remote_commits = fetch_remote_commits(
-                                st.session_state.remote_git_url_input.strip()
-                            )
-                        st.session_state.loaded_remote_git_url = (
-                            st.session_state.remote_git_url_input.strip()
-                        )
-                        persist_prefs()
-                        st.rerun()
-                    except Exception as exc:
-                        st.session_state.analysis_error = str(exc)
-            with f2:
-                if st.button(tr("refresh"), use_container_width=True):
-                    fetch_remote_commits.clear()
-                    fetch_remote_diff.clear()
-                    st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
             st.markdown(
-                f'<div class="panel" style="margin-top:1rem;"><div class="kicker">{tr("activity")}</div>',
+                f'<div class="panel"><div class="kicker">Path</div><div class="chip">{st.session_state.project_path_input or "--"}</div><div class="kicker" style="margin-top:1rem">Diff</div><div class="chip">{len(changed_paths)} files</div></div>',
                 unsafe_allow_html=True,
             )
-            for commit in st.session_state.remote_commits:
-                diff_text = fetch_remote_diff(
-                    st.session_state.loaded_remote_git_url, commit.full_hash
-                )
-                st.markdown(
-                    f'<div class="commit"><div class="meta"><span>#{commit.short_hash}</span><span>{fmt_dt(commit.date)}</span></div><h5>{commit.subject}</h5></div>',
-                    unsafe_allow_html=True,
-                )
-                x, y = st.columns(2, gap="small")
-                with x:
-                    if st.button(
-                        tr("save"),
-                        key=f"save_{commit.full_hash}",
-                        use_container_width=True,
-                    ):
-                        path = save_diff_to_app_storage(
-                            f"{commit.short_hash}_{safe_filename(commit.subject)}.diff",
-                            diff_text,
+        analyze_submitted = st.button(
+            tr("analyze"),
+            type="primary",
+            use_container_width=True,
+        )
+
+        st.markdown(
+            f'<div class="panel" style="margin-top:1rem;"><div class="section"><div><h4>{tr("remote")}</h4><div class="kicker">{tr("activity")}</div></div></div>',
+            unsafe_allow_html=True,
+        )
+        st.text_input(
+            tr("remote"),
+            key="remote_git_url_input",
+            placeholder=tr("remote_ph"),
+            label_visibility="collapsed",
+        )
+        f1, f2 = st.columns(2, gap="small")
+        with f1:
+            if st.button(tr("fetch"), use_container_width=True):
+                try:
+                    if not st.session_state.remote_git_url_input.strip():
+                        raise RuntimeError(tr("need_remote"))
+                    if not is_valid_repo_url(st.session_state.remote_git_url_input):
+                        raise RuntimeError(tr("invalid_remote"))
+                    with st.spinner(tr("fetching")):
+                        st.session_state.remote_commits = fetch_remote_commits(
+                            st.session_state.remote_git_url_input.strip()
                         )
-                        st.session_state.saved_diff_message = tr("saved").format(
-                            path=str(path)
-                        )
-                        st.session_state.saved_diff_path = str(path)
-                        st.rerun()
-                with y:
-                    if st.button(
-                        tr("insert"),
-                        key=f"insert_{commit.full_hash}",
-                        use_container_width=True,
-                    ):
-                        st.session_state.pending_diff_append = diff_text
-                        st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+                    st.session_state.loaded_remote_git_url = (
+                        st.session_state.remote_git_url_input.strip()
+                    )
+                    persist_prefs()
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state.analysis_error = str(exc)
+        with f2:
+            if st.button(tr("refresh"), use_container_width=True):
+                fetch_remote_commits.clear()
+                fetch_remote_diff.clear()
+                st.rerun()
+
+        st.markdown('<div class="remote-grid">', unsafe_allow_html=True)
+        for commit in st.session_state.remote_commits:
+            diff_text = fetch_remote_diff(
+                st.session_state.loaded_remote_git_url, commit.full_hash
+            )
+            st.markdown(
+                f'<div class="commit"><div class="meta"><span>#{commit.short_hash}</span><span>{fmt_dt(commit.date)}</span></div><h5>{commit.subject}</h5></div>',
+                unsafe_allow_html=True,
+            )
+            x, y = st.columns(2, gap="small")
+            with x:
+                if st.button(
+                    tr("save"),
+                    key=f"save_{commit.full_hash}",
+                    use_container_width=True,
+                ):
+                    path = save_diff_to_app_storage(
+                        f"{commit.short_hash}_{safe_filename(commit.subject)}.diff",
+                        diff_text,
+                    )
+                    st.session_state.saved_diff_message = tr("saved").format(
+                        path=str(path)
+                    )
+                    st.session_state.saved_diff_path = str(path)
+                    st.rerun()
+            with y:
+                if st.button(
+                    tr("insert"),
+                    key=f"insert_{commit.full_hash}",
+                    use_container_width=True,
+                ):
+                    st.session_state.pending_diff_append = diff_text
+                    st.rerun()
+        st.markdown("</div></div>", unsafe_allow_html=True)
         if selection is not None and selection.used_fallback:
             st.warning(
                 tr("fallback").format(
@@ -670,11 +692,7 @@ with main_col:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-if (
-    models
-    and stage_name == "intake"
-    and st.button(tr("analyze"), type="primary", use_container_width=True)
-):
+if models and stage_name == "intake" and analyze_submitted:
     try:
         if not st.session_state.prompt_text.strip() and not combined_diff.strip():
             raise RuntimeError(tr("need_input"))
@@ -707,11 +725,7 @@ if (
     except Exception as exc:
         st.session_state.analysis_error = str(exc)
         st.rerun()
-elif (
-    models
-    and stage_name == "clarifications"
-    and st.button(tr("generate"), type="primary", use_container_width=True)
-):
+elif models and stage_name == "clarifications" and generate_submitted:
     try:
         answers = []
         for idx, question in enumerate(
@@ -745,9 +759,7 @@ elif (
     except Exception as exc:
         st.session_state.analysis_error = str(exc)
         st.rerun()
-elif stage_name == "final" and st.button(
-    tr("restart"), type="primary", use_container_width=True
-):
+elif stage_name == "final" and restart_clicked:
     clear_outputs()
     st.rerun()
 
