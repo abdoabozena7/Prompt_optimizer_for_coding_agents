@@ -25,3 +25,21 @@ def test_default_preferences_path_uses_env_override(tmp_path, monkeypatch):
     monkeypatch.setenv(preferences.PREFERENCES_ENV_VAR, str(override))
 
     assert preferences._default_preferences_path() == override
+
+
+def test_save_preferences_preserves_nested_state(tmp_path, monkeypatch):
+    state_file = tmp_path / "state.json"
+    monkeypatch.setattr(preferences, "PREFERENCES_PATH", state_file)
+
+    preferences.save_app_state(
+        {
+            "projects": [{"id": "demo", "local_path": r"D:\projects\demo"}],
+            "last_model": "existing-model",
+        }
+    )
+
+    preferences.save_preferences(last_remote_git_url="https://github.com/example/repo")
+
+    payload = preferences.load_app_state()
+    assert payload["projects"] == [{"id": "demo", "local_path": r"D:\projects\demo"}]
+    assert payload["last_remote_git_url"] == "https://github.com/example/repo"

@@ -6,6 +6,7 @@ from typing import Any
 
 from prompt_optimizer.models import (
     AnalysisResult,
+    BlindSpot,
     ClarificationQuestion,
     RepoContextSnippet,
 )
@@ -17,12 +18,20 @@ Return strict JSON with this schema:
   "agent_intent": "string",
   "user_intent": "string",
   "missing_info": ["string"],
+  "blind_spots": [
+    {
+      "title": "string",
+      "reason": "string",
+      "severity": "high|medium|low"
+    }
+  ],
   "followup_questions": [
     {
       "question": "string",
       "options": ["string", "string", "string"]
     }
-  ]
+  ],
+  "can_generate_final_prompt": true
 }
 
 Rules:
@@ -30,9 +39,12 @@ Rules:
 - Explain what the coding agent appears to be implementing from the diff.
 - Explain what the human prompt appears to request.
 - List only real gaps in missing_info.
+- Add blind_spots only for real contradictions, ambiguity, or likely missing intent.
+- Mark severity as high when the issue should block final prompt generation.
 - Write agent_intent, user_intent, missing_info, and followup_questions in the requested UI language.
 - Ask at most 4 high-value clarification questions.
 - Each followup question must include exactly 3 realistic, mutually exclusive answer options.
+- Set can_generate_final_prompt to false when any high-severity blind spot remains unresolved.
 - Do not generate the final prompt in this step.
 - Do not include markdown fences or extra text outside JSON.
 """
@@ -65,6 +77,7 @@ def build_analysis_payload(
     diff_text: str,
     repo_context: list[RepoContextSnippet],
     ui_language: str,
+    retrieved_evidence: list[str] | None = None,
 ) -> str:
     context_blocks = []
 
@@ -87,6 +100,12 @@ def build_analysis_payload(
             prompt_text.strip() or "(empty)",
             "Diff under analysis:",
             diff_text.strip() or "(empty)",
+            "Retrieved evidence:",
+            (
+                "\n\n".join(retrieved_evidence or [])
+                if retrieved_evidence
+                else "(no retrieved evidence)"
+            ),
             "Relevant repository context:",
             (
                 "\n\n".join(context_blocks)
@@ -103,11 +122,16 @@ def build_final_prompt_payload(
     repo_context: list[RepoContextSnippet],
     analysis_result: AnalysisResult,
     clarification_answers: list[dict[str, str]],
+    retrieved_evidence: list[str] | None = None,
 ) -> str:
     context_blocks = []
     missing_items = [f"- {item}" for item in analysis_result.missing_info] or [
         "- (none)"
     ]
+    blind_spot_items = [
+        f"- [{item.severity}] {item.title}: {item.reason}"
+        for item in analysis_result.blind_spots
+    ] or ["- (none)"]
     for snippet in repo_context:
         context_blocks.append(
             "\n".join(
@@ -145,10 +169,23 @@ def build_final_prompt_payload(
                     f"User intent: {analysis_result.user_intent}",
                     "Missing info:",
                     *missing_items,
+                    "Blind spots:",
+                    *blind_spot_items,
+                    (
+                        "Can generate final prompt now: yes"
+                        if analysis_result.can_generate_final_prompt
+                        else "Can generate final prompt now: no"
+                    ),
                 ]
             ),
             "Clarification answers:",
             "\n\n".join(answer_blocks) if answer_blocks else "(none)",
+            "Retrieved evidence:",
+            (
+                "\n\n".join(retrieved_evidence or [])
+                if retrieved_evidence
+                else "(no retrieved evidence)"
+            ),
             "Relevant repository context:",
             (
                 "\n\n".join(context_blocks)
@@ -219,11 +256,38 @@ def parse_analysis_response(raw_text: str) -> AnalysisResult:
 
         return questions
 
+    def parse_blind_spots(value: Any) -> list[BlindSpot]:
+        blind_spots: list[BlindSpot] = []
+        if not isinstance(value, list):
+            return blind_spots
+
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            severity = str(item.get("severity", "medium")).strip().lower() or "medium"
+            if title and reason:
+                blind_spots.append(
+                    BlindSpot(
+                        title=title,
+                        reason=reason,
+                        severity=(
+                            severity
+                            if severity in {"high", "medium", "low"}
+                            else "medium"
+                        ),
+                    )
+                )
+        return blind_spots
+
     return AnalysisResult(
         agent_intent=str(payload.get("agent_intent", "")).strip(),
         user_intent=str(payload.get("user_intent", "")).strip(),
         missing_info=ensure_string_list(payload.get("missing_info")),
+        blind_spots=parse_blind_spots(payload.get("blind_spots")),
         followup_questions=parse_followup_questions(payload.get("followup_questions")),
+        can_generate_final_prompt=bool(payload.get("can_generate_final_prompt", True)),
         improved_prompt=str(payload.get("improved_prompt", "")).strip(),
         raw_response=raw_text,
     )
@@ -239,6 +303,7 @@ def analyze_for_clarification(
     diff_text: str,
     repo_context: list[RepoContextSnippet],
     ui_language: str,
+    retrieved_evidence: list[str] | None = None,
     model: str = "",
     provider: Any | None = None,
 ) -> AnalysisResult:
@@ -252,6 +317,7 @@ def analyze_for_clarification(
         prompt_text=prompt_text,
         diff_text=diff_text,
         repo_context=repo_context,
+        retrieved_evidence=retrieved_evidence or [],
         ui_language=ui_language,
         model=model,
     )
@@ -263,6 +329,7 @@ def generate_final_prompt(
     repo_context: list[RepoContextSnippet],
     analysis_result: AnalysisResult,
     clarification_answers: list[dict[str, str]],
+    retrieved_evidence: list[str] | None = None,
     model: str = "",
     provider: Any | None = None,
 ) -> str:
@@ -276,6 +343,7 @@ def generate_final_prompt(
         prompt_text=prompt_text,
         diff_text=diff_text,
         repo_context=repo_context,
+        retrieved_evidence=retrieved_evidence or [],
         analysis_result=analysis_result,
         clarification_answers=clarification_answers,
         model=model,

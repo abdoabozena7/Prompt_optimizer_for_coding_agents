@@ -60,12 +60,20 @@ def test_parse_analysis_response_complete():
       "agent_intent": "Implement login flow",
       "user_intent": "Ask for secure auth changes",
       "missing_info": ["Token expiry is missing"],
+      "blind_spots": [
+        {
+          "title": "Token contract is unclear",
+          "reason": "The prompt does not define refresh-token behavior.",
+          "severity": "high"
+        }
+      ],
       "followup_questions": [
         {
           "question": "Should refresh tokens be added?",
           "options": ["Yes, add them", "No, access token only", "Keep current token flow"]
         }
-      ]
+      ],
+      "can_generate_final_prompt": false
     }
     """
     result = parse_analysis_response(raw)
@@ -79,6 +87,8 @@ def test_parse_analysis_response_complete():
         "No, access token only",
         "Keep current token flow",
     ]
+    assert result.blind_spots[0].severity == "high"
+    assert result.can_generate_final_prompt is False
 
 
 def test_parse_analysis_response_from_markdown_fence():

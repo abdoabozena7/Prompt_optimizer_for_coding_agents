@@ -29,6 +29,7 @@ class PromptOptimizerProvider(Protocol):
         repo_context: list[RepoContextSnippet],
         ui_language: str,
         model: str,
+        retrieved_evidence: list[str] | None = None,
     ) -> AnalysisResult:
         """Analyze a prompt/diff pair and return clarification guidance."""
 
@@ -40,6 +41,7 @@ class PromptOptimizerProvider(Protocol):
         analysis_result: AnalysisResult,
         clarification_answers: list[dict[str, str]],
         model: str,
+        retrieved_evidence: list[str] | None = None,
     ) -> str:
         """Generate the final implementation-ready prompt."""
 
@@ -113,12 +115,14 @@ class OllamaProvider:
         repo_context: list[RepoContextSnippet],
         ui_language: str,
         model: str,
+        retrieved_evidence: list[str] | None = None,
     ) -> AnalysisResult:
         payload = build_analysis_payload(
             prompt_text=prompt_text,
             diff_text=diff_text,
             repo_context=repo_context,
             ui_language=ui_language,
+            retrieved_evidence=retrieved_evidence or [],
         )
         content = self._chat_json(
             model=model,
@@ -140,11 +144,13 @@ class OllamaProvider:
         analysis_result: AnalysisResult,
         clarification_answers: list[dict[str, str]],
         model: str,
+        retrieved_evidence: list[str] | None = None,
     ) -> str:
         payload = build_final_prompt_payload(
             prompt_text=prompt_text,
             diff_text=diff_text,
             repo_context=repo_context,
+            retrieved_evidence=retrieved_evidence or [],
             analysis_result=analysis_result,
             clarification_answers=clarification_answers,
         )

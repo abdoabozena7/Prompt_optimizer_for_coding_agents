@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 PREFERENCES_ENV_VAR = "PROMPT_OPTIMIZER_STATE_PATH"
 
@@ -40,7 +41,7 @@ def _default_preferences_path() -> Path:
 PREFERENCES_PATH = _default_preferences_path()
 
 
-def load_preferences() -> dict[str, str]:
+def _read_state_file() -> dict[str, Any]:
     if not PREFERENCES_PATH.exists():
         return {}
 
@@ -52,6 +53,19 @@ def load_preferences() -> dict[str, str]:
     if not isinstance(payload, dict):
         return {}
 
+    return payload
+
+
+def _write_state_file(payload: dict[str, Any]) -> None:
+    PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PREFERENCES_PATH.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+
+def load_preferences() -> dict[str, str]:
+    payload = _read_state_file()
     return {
         key: str(value)
         for key, value in payload.items()
@@ -59,13 +73,17 @@ def load_preferences() -> dict[str, str]:
     }
 
 
+def load_app_state() -> dict[str, Any]:
+    return _read_state_file()
+
+
+def save_app_state(payload: dict[str, Any]) -> None:
+    _write_state_file(payload)
+
+
 def save_preferences(**values: str) -> None:
-    current = load_preferences()
+    current = _read_state_file()
     current.update(
         {key: value for key, value in values.items() if isinstance(value, str)}
     )
-    PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PREFERENCES_PATH.write_text(
-        json.dumps(current, ensure_ascii=True, indent=2),
-        encoding="utf-8",
-    )
+    _write_state_file(current)

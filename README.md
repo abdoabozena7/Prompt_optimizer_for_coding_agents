@@ -1,7 +1,7 @@
 # Prompt Optimizer
 
 Prompt Optimizer turns `intent + code diff + ambiguity` into an implementation-ready prompt for coding agents.  
-It analyzes what changed, asks targeted clarification questions, then produces a stronger final prompt in English.
+The app now uses a minimal two-page flow built with FastAPI and React, with internal diff ingestion, project memory, and a hybrid retrieval layer for intent analysis.
 
 ![Prompt Optimizer home](docs/assets/prompt-optimizer-home.png)
 ![Prompt Optimizer analysis results](docs/assets/prompt-optimizer-results.png)
@@ -14,9 +14,9 @@ It analyzes what changed, asks targeted clarification questions, then produces a
 
 ### You start with
 
-- A rough prompt, task description, or implementation plan
-- A unified diff pasted manually, uploaded from a file, or imported from remote commits
-- Optional local repository context for changed files
+- A saved project with a local path and GitHub or GitLab link
+- One or more selected commits to inspect
+- A current user prompt plus any missing recent prompts required to explain missed commits
 
 ### You get back
 
@@ -28,9 +28,9 @@ It analyzes what changed, asks targeted clarification questions, then produces a
 
 Prompt Optimizer is not a prompt rewriter. It runs a three-stage workflow:
 
-1. Analyze the prompt, diff, and repository context
-2. Surface missing decisions as clarification questions
-3. Generate a concrete final prompt after answers are provided
+1. Refresh remote commits and detect how many commits were missed since the last processed prompt
+2. Ingest selected diffs internally, retrieve the most relevant code and prompt evidence, and ask for the matching missing prompts when needed
+3. Detect blind spots, confirm the intended user goal, and generate a concrete final prompt only when high-severity gaps are resolved
 
 ### Use cases
 
@@ -66,10 +66,18 @@ ollama list
 ollama pull qwen2.5-coder:7b
 ```
 
-### 4. Run the app
+### 4. Start the backend
 
 ```powershell
-python -m streamlit run diff.py
+uvicorn prompt_optimizer.api:app --reload
+```
+
+### 5. Start the frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev
 ```
 
 ## Example Workflow
@@ -82,7 +90,7 @@ User prompt:
 Add JWT authentication for the API routes.
 ```
 
-Diff:
+Selected diff:
 
 ```diff
 diff --git a/app.py b/app.py
@@ -97,7 +105,7 @@ index 123..456 100644
 +print("hello")
 ```
 
-### Clarification questions
+### Blind spots and clarifications
 
 The app may ask questions such as:
 
@@ -106,7 +114,7 @@ The app may ask questions such as:
 - How should tokens be issued?
 - Where should the secret key and expiry settings live?
 
-Each question comes with three selectable options plus an optional custom note.
+High-severity contradictions or missing intent block final prompt generation until the user resolves them.
 
 ### Output
 
@@ -120,32 +128,37 @@ Implement JWT authentication for the Flask API routes using Flask-JWT-Extended. 
 
 ```mermaid
 flowchart TD
-    A["Streamlit UI"] --> B["Prompt / Diff / Repo Inputs"]
-    B --> C["Context Builder"]
-    B --> D["Prompt Optimization Service"]
-    C --> D
-    D --> E["Ollama Provider"]
-    E --> F["Available Models"]
-    E --> G["Initial Analysis JSON"]
-    E --> H["Final Prompt JSON"]
-    G --> I["Clarification Questions"]
-    I --> D
-    H --> J["Implementation-Ready English Prompt"]
+    A["React Config Page"] --> B["Saved Project Memory"]
+    B --> C["React Workspace Page"]
+    C --> D["FastAPI Sync API"]
+    D --> E["Commit Refresh + Missed Commit Count"]
+    C --> F["Selected Diffs + Prompt Trail + Current Prompt"]
+    F --> G["Retrieval Index Service"]
+    G --> H["Curated Evidence Set"]
+    H --> I["Ollama Provider"]
+    I --> J["Intent Analysis + Blind Spots"]
+    J --> K["Intent Confirmation + Clarifications"]
+    K --> L["Final Prompt JSON"]
 ```
 
 ### Main pieces
 
-- `diff.py`: Streamlit application and UI flow
+- `prompt_optimizer/api.py`: FastAPI endpoints for project memory, commit refresh, analysis, and final prompt generation
 - `prompt_optimizer/analysis.py`: prompt payload construction and JSON parsing
+- `prompt_optimizer/commit_sync_service.py`: commit refresh, missed-commit tracking, and default diff selection
+- `prompt_optimizer/retrieval_index_service.py`: internal diff chunking and hybrid retrieval over prompt history, commit metadata, and related code
+- `prompt_optimizer/intent_analysis_service.py`: curated evidence assembly for analysis and final prompt generation
+- `prompt_optimizer/blind_spot_service.py`: generation gate for high-severity contradictions and ambiguity
 - `prompt_optimizer/providers.py`: provider boundary plus `OllamaProvider`
 - `prompt_optimizer/context.py`: changed-file and related-file context extraction
 - `prompt_optimizer/repo_ops.py`: remote commit and diff retrieval
-- `prompt_optimizer/preferences.py`: local user preferences stored outside the repo
+- `prompt_optimizer/project_memory.py`: persistent multi-project memory, prompt history, and commit-gap logic
+- `frontend/`: React client with a config page and workspace page
 
 ## Product Notes
 
 - The UI supports English and Arabic explanations, while the final generated prompt stays in English.
-- Local preferences such as project path, remote URL, UI language, and selected model are stored in user app data, not in the repository.
+- Local preferences and saved projects are stored in user app data, not in the repository.
 - Runtime support in this milestone is Ollama-only, but the code now has a provider boundary for future OpenAI or Anthropic integrations.
 
 ## Development
@@ -168,6 +181,12 @@ python -m mypy prompt_optimizer
 ## Current Scope
 
 - Ollama model selection from the UI
+- Persistent project memory by local path
+- Automatic commit refresh and missed-commit counting
+- Internal diff ingestion with commit-subject selection and optional full diff preview
+- Hybrid retrieval over prompt history, commit metadata, diff chunks, and changed/related code
+- Blind-spot detection that can block final generation until the intent is clear
+- Prompt-trail compaction for older missed prompts while keeping the current user prompt intact
 - Automatic fallback to the first available model when the preferred one is missing
 - Clear errors for Ollama connectivity issues, empty responses, invalid JSON, and remote Git request failures
 - Tests covering provider failures, malformed model output, remote fetch failures, and preferences path behavior

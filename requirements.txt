@@ -1,4 +1,5 @@
-streamlit
+fastapi
+uvicorn[standard]
 ollama
 pytest
 requests
