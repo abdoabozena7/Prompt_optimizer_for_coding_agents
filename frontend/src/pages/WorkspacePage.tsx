@@ -484,10 +484,19 @@ export function WorkspacePage() {
   return (
     <main className="workspace-shell">
       <section className="workspace-header">
-        <div>
+        <div className="workspace-heading">
           <p className="eyebrow">Workspace</p>
           <h2>{project.name}</h2>
           <p className="lede">{project.localPath}</p>
+          <div className="workspace-meta" aria-label="Project metadata">
+            <span className="workspace-meta-item">
+              {project.preferredModel || "No preferred model"}
+            </span>
+            <span className="workspace-meta-item">{sync.commits.length} recent commits</span>
+            <span className="workspace-meta-item">
+              {project.promptHistoryCount} saved prompts
+            </span>
+          </div>
         </div>
         <div className="workspace-header-side">
           {activeTaskLabel ? (
@@ -553,6 +562,10 @@ export function WorkspacePage() {
                 {sync.missedCommitCount} missed commit
                 {sync.missedCommitCount === 1 ? "" : "s"}
               </h3>
+              <p className="section-copy">
+                Review the recent commit list, choose the changes that matter, and
+                preview the latest summary or full diff when needed.
+              </p>
             </div>
 
             <div className="action-row">
@@ -661,6 +674,10 @@ export function WorkspacePage() {
             <div className="section-heading">
               <p className="eyebrow">Intent Intake</p>
               <h3>Choose the commits, then describe the newest prompt once.</h3>
+              <p className="section-copy">
+                Keep the main prompt short and concrete. Add older prompt notes only
+                when they change the implementation intent.
+              </p>
             </div>
 
             <form className="intent-form" onSubmit={handleAnalyze}>
@@ -755,6 +772,10 @@ export function WorkspacePage() {
             <div className="section-heading">
               <p className="eyebrow">Result Summary</p>
               <h3>Review intent and generate the final prompt.</h3>
+              <p className="section-copy">
+                Confirm the user intent, resolve blind spots, then generate the final
+                implementation-ready prompt.
+              </p>
             </div>
             <div className="results-metrics">
               <div className="results-metric">

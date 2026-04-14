@@ -39,9 +39,12 @@ export default function App() {
           <div className="brand-mark" aria-hidden="true">
             PO
           </div>
-          <div>
-            <p className="eyebrow">Prompt Optimizer</p>
-            <h1>Project intent, ready for implementation.</h1>
+          <div className="brand-copy">
+            <p className="eyebrow">Cafe Workspace</p>
+            <h1>Prompt Optimizer</h1>
+            <p className="app-tagline">
+              Turn repository changes into a clear implementation brief.
+            </p>
           </div>
         </div>
         <nav className="top-nav" aria-label="Primary">

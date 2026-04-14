@@ -73,13 +73,13 @@ export function ConfigPage({
   return (
     <main className="config-page">
       <section className="config-main">
-        <div className="config-heading">
+        <div className="page-intro">
           <div>
-            <p className="eyebrow">Config</p>
-            <h2>Set up a project</h2>
+            <p className="eyebrow">Project Setup</p>
+            <h2>Save one repository and keep the workspace ready.</h2>
             <p className="lede">
-              Save the local repository path, optional remote URL, and preferred
-              model so the workspace opens with the same context next time.
+              Keep the local path, optional remote URL, and preferred model in one
+              place so the next analysis session opens with the same context.
             </p>
           </div>
           {latestProject ? (
@@ -93,10 +93,30 @@ export function ConfigPage({
           ) : null}
         </div>
 
+        <div className="setup-summary-strip" aria-label="Workspace summary">
+          <div className="setup-summary-item">
+            <span>Saved projects</span>
+            <strong>{projects.length}</strong>
+          </div>
+          <div className="setup-summary-item">
+            <span>Available models</span>
+            <strong>{models.length || 0}</strong>
+          </div>
+          <div className="setup-summary-item">
+            <span>Current default</span>
+            <strong>{defaultModel || "No model loaded"}</strong>
+          </div>
+        </div>
+
         <section className="config-surface">
-          <div className="config-section-title">
-            <h3>Project details</h3>
-            <p>Start with the repository you want Prompt Optimizer to track.</p>
+          <div className="surface-heading">
+            <div>
+              <p className="eyebrow">Details</p>
+              <h3>Project details</h3>
+            </div>
+            <p className="section-copy">
+              Start with the repository Prompt Optimizer should track and reuse.
+            </p>
           </div>
 
           <form className="config-form minimal-config-form" onSubmit={handleSubmit}>
@@ -125,7 +145,7 @@ export function ConfigPage({
             </label>
 
             <label>
-              GitHub or GitLab URL
+              Remote repository URL
               <input
                 value={remoteUrl}
                 onChange={(event) => setRemoteUrl(event.target.value)}
@@ -159,7 +179,7 @@ export function ConfigPage({
 
             <div className="config-actions">
               <button className="primary-button" disabled={saving} type="submit">
-                {saving ? "Saving..." : "Save project"}
+                {saving ? "Saving..." : "Save and open workspace"}
               </button>
             </div>
           </form>
@@ -171,11 +191,14 @@ export function ConfigPage({
       <aside className="config-dock">
         <div className="config-dock-header">
           <div>
-            <p className="eyebrow">Saved projects</p>
+            <p className="eyebrow">Saved workspaces</p>
             <h3>{projects.length ? `${projects.length} remembered` : "No saved projects"}</h3>
           </div>
           <span className="dock-meta">Recent</span>
         </div>
+        <p className="dock-note">
+          Reopen a repository without re-entering its path, remote URL, or model.
+        </p>
 
         {recentProjects.length ? (
           <div className="config-project-list">
